@@ -10,6 +10,63 @@ A personal finance tool where you model your own financial concepts — balances
 - Database: SQLite for local dev, Postgres in prod
 - Runtime posture: multi-user / SaaS-shaped from day one
 
+## Running in development
+
+### Prerequisites
+
+- Node.js 20+
+- Python 3.11+
+- Docker (optional, for container-based local dev)
+
+### Local workspace dev
+
+```bash
+cd /home/runner/work/finance-o-matic/finance-o-matic
+corepack enable
+corepack pnpm install --no-frozen-lockfile
+```
+
+Install backend Python dependencies:
+
+```bash
+cd /home/runner/work/finance-o-matic/finance-o-matic/apps/api
+python -m pip install -e ".[dev]"
+```
+
+Run all workspace dev tasks (via Turborepo):
+
+```bash
+cd /home/runner/work/finance-o-matic/finance-o-matic
+corepack pnpm dev
+```
+
+### Run apps individually
+
+Web:
+
+```bash
+cd /home/runner/work/finance-o-matic/finance-o-matic/apps/web
+corepack pnpm dev
+```
+
+API:
+
+```bash
+cd /home/runner/work/finance-o-matic/finance-o-matic/apps/api
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Docker-based local dev
+
+From the repository root:
+
+```bash
+docker compose -f infra/compose/docker-compose.dev.yml up --build
+docker compose -f infra/compose/docker-compose.yml up --build
+```
+
+This starts Postgres + API + web (web is exposed on `http://localhost:5173`, API on `http://localhost:8000`).
+
 ---
 
 ## 1. Requirements & Goals
