@@ -21,23 +21,23 @@ A personal finance tool where you model your own financial concepts — balances
 ### Local workspace dev
 
 ```bash
-cd /home/runner/work/finance-o-matic/finance-o-matic
+cd finance-o-matic
 corepack enable
-corepack pnpm install --no-frozen-lockfile
+pnpm install
 ```
 
 Install backend Python dependencies:
 
 ```bash
-cd /home/runner/work/finance-o-matic/finance-o-matic/apps/api
+cd finance-o-matic/apps/api
 python -m pip install -e ".[dev]"
 ```
 
 Run all workspace dev tasks (via Turborepo):
 
 ```bash
-cd /home/runner/work/finance-o-matic/finance-o-matic
-corepack pnpm dev
+cd finance-o-matic
+pnpm dev
 ```
 
 ### Run apps individually
@@ -45,15 +45,15 @@ corepack pnpm dev
 Web:
 
 ```bash
-cd /home/runner/work/finance-o-matic/finance-o-matic/apps/web
-corepack pnpm dev
+cd finance-o-matic/apps/web
+pnpm dev
 ```
 
 API:
 
 ```bash
-cd /home/runner/work/finance-o-matic/finance-o-matic/apps/api
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+cd finance-o-matic/apps/api
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ### Docker-based local dev
@@ -61,8 +61,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 From the repository root:
 
 ```bash
-docker compose -f infra/compose/docker-compose.dev.yml up --build
-docker compose -f infra/compose/docker-compose.yml up --build
+docker compose -f infra/compose/docker-compose.yml -f infra/compose/docker-compose.dev.yml up --build
 ```
 
 This starts Postgres + API + web (web is exposed on `http://localhost:5173`, API on `http://localhost:8000`).
