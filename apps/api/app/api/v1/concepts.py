@@ -46,12 +46,12 @@ async def evaluate_concept(
         value = evaluate_concept_by_id(concept_id, concepts)
     except FormulaCycleError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "formula_cycle", "message": str(exc)},
         ) from exc
     except FormulaEvaluationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={"code": "formula_invalid", "message": str(exc)},
         ) from exc
 

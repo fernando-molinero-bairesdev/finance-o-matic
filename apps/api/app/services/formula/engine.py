@@ -41,7 +41,7 @@ def _fn_max(*values: float) -> float:
 
 
 def _fn_if(condition: bool, when_true: float, when_false: float) -> float:
-    return float(when_true if condition else when_false)
+    return when_true if condition else when_false
 
 
 _ALLOWED_FUNCTIONS = {
@@ -280,4 +280,3 @@ def evaluate_concept_by_id(concept_id: uuid.UUID, concepts: Iterable[Concept]) -
         return result
 
     return evaluate_node(concept_id)
-
