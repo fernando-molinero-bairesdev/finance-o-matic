@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  web:
+    build:
+      context: ../../apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+
+  api:
+    extends:
+      file: docker-compose.yml
+      service: api

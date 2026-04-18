@@ -1,0 +1,17 @@
+{
+  "name": "@finance-o-matic/types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "pnpm --filter @finance-o-matic/api openapi:export && openapi-typescript ../../apps/api/openapi.json -o src/api.ts",
+    "build": "tsc --noEmit",
+    "test": "echo 'types test placeholder'",
+    "lint": "echo 'types lint placeholder'",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.2",
+    "typescript": "^5.6.3"
+  }
+}

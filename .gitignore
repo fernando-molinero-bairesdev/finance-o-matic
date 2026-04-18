@@ -1,0 +1,27 @@
+node_modules/
+pnpm-lock.yaml
+.vscode/
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# JS/TS
+coverage/
+dist/
+.turbo/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+
+# Local DBs and logs
+*.sqlite3
+*.db
+*.log
+
+*.egg-info/
