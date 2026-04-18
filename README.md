@@ -67,6 +67,49 @@ curl http://localhost:8000/api/v1/users/me \
 
 The web app also supports register/login flows at `/register` and `/login`.
 
+### Database management
+
+The API uses **SQLAlchemy 2.0** for async ORM access and **Alembic** for schema migrations. The database engine is chosen by `DATABASE_URL`:
+
+| Environment | Driver | Example `DATABASE_URL` |
+|-------------|--------|------------------------|
+| Local dev (default) | `aiosqlite` | `sqlite+aiosqlite:///./dev.db` |
+| Production / Docker | `asyncpg` | `postgresql+asyncpg://user:pass@host:5432/finance_o_matic` |
+
+> The `alembic.ini` default points to SQLite. Alembic reads `DATABASE_URL` from `apps/api/.env` at runtime, so setting the env var is all that is needed to switch to Postgres.
+
+**Apply all pending migrations** (idempotent — safe to run on first start):
+
+```bash
+pnpm db:migrate
+# or from apps/api/: python -m alembic upgrade head
+```
+
+**Create a new auto-generated migration** after changing a model:
+
+```bash
+pnpm db:revision -- -m "add snapshot table"
+# or from apps/api/: python -m alembic revision --autogenerate -m "add snapshot table"
+```
+
+Review the generated file in `apps/api/alembic/versions/` before committing it.
+
+**Roll back the last migration**:
+
+```bash
+pnpm db:downgrade
+# or from apps/api/: python -m alembic downgrade -1
+```
+
+**Seed ISO 4217 currencies** (run once after the first migration):
+
+```bash
+cd apps/api
+python scripts/seed_currencies.py
+```
+
+The seed script is idempotent — re-running it inserts only missing rows.
+
 ### Local workspace dev
 
 ```bash
