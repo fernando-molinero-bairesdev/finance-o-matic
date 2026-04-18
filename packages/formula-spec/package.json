@@ -1,0 +1,11 @@
+{
+  "name": "@finance-o-matic/formula-spec",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'formula-spec build placeholder'",
+    "test": "echo 'formula-spec test placeholder'",
+    "lint": "echo 'formula-spec lint placeholder'",
+    "typecheck": "echo 'formula-spec typecheck placeholder'"
+  }
+}

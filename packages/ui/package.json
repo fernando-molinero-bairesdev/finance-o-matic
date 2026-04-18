@@ -1,0 +1,12 @@
+{
+  "name": "@finance-o-matic/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo 'ui build placeholder'",
+    "test": "echo 'ui test placeholder'",
+    "lint": "echo 'ui lint placeholder'",
+    "typecheck": "echo 'ui typecheck placeholder'"
+  }
+}
