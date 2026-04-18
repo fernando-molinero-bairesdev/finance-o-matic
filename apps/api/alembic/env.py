@@ -14,6 +14,7 @@ import app.models.user  # noqa: F401
 import app.models.currency  # noqa: F401
 import app.models.fx_rate  # noqa: F401
 import app.models.concept  # noqa: F401
+import app.models.concept_dependency  # noqa: F401
 
 config = context.config
 
