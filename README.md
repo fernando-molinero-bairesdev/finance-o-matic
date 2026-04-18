@@ -47,7 +47,7 @@ Register:
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com","password":"str0ngPassword!"}'
+  -d '{"email":"you@example.com","password":"MyS3cur3P@ssw0rd2024!"}'
 ```
 
 Login (JWT):
@@ -55,7 +55,7 @@ Login (JWT):
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/jwt/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=you@example.com&password=str0ngPassword!"
+  -d "username=you@example.com&password=MyS3cur3P@ssw0rd2024!"
 ```
 
 Use the returned `access_token` as a bearer token for protected endpoints:
