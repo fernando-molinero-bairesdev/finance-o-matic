@@ -9,7 +9,10 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "generate:types": "pnpm --filter @finance-o-matic/types generate"
+    "generate:types": "pnpm --filter @finance-o-matic/types generate",
+    "db:migrate": "pnpm --filter @finance-o-matic/api db:migrate",
+    "db:revision": "pnpm --filter @finance-o-matic/api db:revision --",
+    "db:downgrade": "pnpm --filter @finance-o-matic/api db:downgrade"
   },
   "devDependencies": {
     "turbo": "^2.1.3"

@@ -10,6 +10,8 @@
     "typecheck": "python -m mypy app",
     "openapi:export": "python scripts/export_openapi.py",
     "seed:currencies": "python scripts/seed_currencies.py",
-    "db:migrate": "python -m alembic upgrade head"
+    "db:migrate": "python -m alembic upgrade head",
+    "db:revision": "python -m alembic revision --autogenerate",
+    "db:downgrade": "python -m alembic downgrade -1"
   }
 }

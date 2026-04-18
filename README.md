@@ -33,6 +33,13 @@ cd finance-o-matic/apps/api
 python -m pip install -e ".[dev]"
 ```
 
+Apply database migrations:
+
+```bash
+cd finance-o-matic
+pnpm db:migrate
+```
+
 Run all workspace dev tasks (via Turborepo):
 
 ```bash
@@ -53,7 +60,15 @@ API:
 
 ```bash
 cd finance-o-matic/apps/api
+pnpm db:migrate
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Create a new migration:
+
+```bash
+cd finance-o-matic
+pnpm db:revision -- -m "your migration message"
 ```
 
 ### Docker-based local dev
