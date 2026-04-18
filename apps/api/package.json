@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
-    "build": "python -m compileall app",
-    "test": "python -m pytest",
-    "lint": "python -m ruff check app tests",
-    "typecheck": "python -m mypy app",
-    "openapi:export": "python scripts/export_openapi.py",
-    "seed:currencies": "python scripts/seed_currencies.py",
-    "db:migrate": "python -m alembic upgrade head",
-    "db:revision": "python -m alembic revision --autogenerate",
-    "db:downgrade": "python -m alembic downgrade -1"
+    "dev": "node scripts/run-python.cjs -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+    "build": "node scripts/run-python.cjs -m compileall app",
+    "test": "node scripts/run-python.cjs -m pytest",
+    "lint": "node scripts/run-python.cjs -m ruff check app tests",
+    "typecheck": "node scripts/run-python.cjs -m mypy app",
+    "openapi:export": "node scripts/run-python.cjs scripts/export_openapi.py",
+    "seed:currencies": "node scripts/run-python.cjs scripts/seed_currencies.py",
+    "db:migrate": "node scripts/run-python.cjs -m alembic upgrade head",
+    "db:revision": "node scripts/run-python.cjs -m alembic revision --autogenerate",
+    "db:downgrade": "node scripts/run-python.cjs -m alembic downgrade -1"
   }
 }
