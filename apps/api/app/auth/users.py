@@ -1,3 +1,4 @@
+import logging
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -11,6 +12,8 @@ from app.core.config import settings
 from app.core.db import get_async_session
 from app.models.user import User
 
+logger = logging.getLogger(__name__)
+
 
 async def get_user_db(
     session: AsyncSession = Depends(get_async_session),
@@ -23,12 +26,12 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     verification_token_secret = settings.secret_key
 
     async def on_after_register(self, user: User, request: Request | None = None) -> None:
-        print(f"User {user.id} registered.")
+        logger.info("User %s registered.", user.id)
 
     async def on_after_forgot_password(
         self, user: User, token: str, request: Request | None = None
     ) -> None:
-        print(f"User {user.id} requested password reset. Token: {token}")
+        logger.info("User %s requested a password reset.", user.id)
 
 
 async def get_user_manager(

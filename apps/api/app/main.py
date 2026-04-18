@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as v1_router
 from app.auth.users import auth_backend, fastapi_users
+from app.core.config import settings
 from app.core.db import Base, engine
 from app.schemas.user import UserCreate, UserRead, UserUpdate
 
@@ -27,7 +28,7 @@ app = FastAPI(title="finance-o-matic API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
