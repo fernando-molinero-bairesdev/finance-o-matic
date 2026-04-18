@@ -1,10 +1,5 @@
-function App() {
-  return (
-    <main>
-      <h1>finance-o-matic</h1>
-      <p>Scaffold ready for TDD-driven development.</p>
-    </main>
-  )
-}
+import AppRouter from './router'
 
-export default App
+export default function App() {
+  return <AppRouter />
+}

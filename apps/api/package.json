@@ -8,6 +8,8 @@
     "test": "python -m pytest",
     "lint": "python -m ruff check app tests",
     "typecheck": "python -m mypy app",
-    "openapi:export": "python scripts/export_openapi.py"
+    "openapi:export": "python scripts/export_openapi.py",
+    "seed:currencies": "python scripts/seed_currencies.py",
+    "db:migrate": "python -m alembic upgrade head"
   }
 }

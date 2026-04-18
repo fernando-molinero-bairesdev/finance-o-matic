@@ -17,7 +17,7 @@ services:
       context: ../../apps/api
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/finance_o_matic
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/finance_o_matic
     ports:
       - "8000:8000"
     depends_on:

@@ -1,11 +1,27 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import App from './App'
+import { MemoryRouter } from 'react-router-dom'
+import { AuthContext } from './features/auth/AuthContext'
+import type { AuthContextValue } from './features/auth/AuthContext'
+import LoginPage from './features/auth/LoginPage'
 
-describe('App', () => {
-  it('renders scaffold heading', () => {
-    render(<App />)
+const unauthCtx: AuthContextValue = {
+  user: null,
+  isLoading: false,
+  login: async () => {},
+  register: async () => {},
+  logout: () => {},
+}
 
-    expect(screen.getByRole('heading', { name: /finance-o-matic/i })).toBeInTheDocument()
+describe('App default route', () => {
+  it('shows the login page at /login', () => {
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AuthContext.Provider value={unauthCtx}>
+          <LoginPage />
+        </AuthContext.Provider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
   })
 })
