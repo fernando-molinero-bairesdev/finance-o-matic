@@ -18,6 +18,55 @@ A personal finance tool where you model your own financial concepts — balances
 - Python 3.11+
 - Docker (optional, for container-based local dev)
 
+### Environment setup (`.env`)
+
+Use the root `.env.example` as the source of truth:
+
+```bash
+cd finance-o-matic
+cp .env.example apps/api/.env
+cp .env.example apps/web/.env
+```
+
+Required values:
+
+- `DATABASE_URL`: API database connection string
+- `SECRET_KEY`: JWT/signing secret (change from default)
+- `JWT_LIFETIME_SECONDS`: access token lifetime (default: `3600`)
+- `CORS_ORIGINS`: JSON array of allowed frontend origins
+- `VITE_API_BASE_URL`: API base URL used by the web app (`http://localhost:8000` for local dev)
+
+For Docker Compose local dev, use the compose defaults in `infra/compose/*.yml` or place overrides in a root `.env`.
+
+### Auth quickstart
+
+The API exposes auth routes under `/api/v1/auth/*` and user routes under `/api/v1/users/*`.
+
+Register:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"str0ngPassword!"}'
+```
+
+Login (JWT):
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/jwt/login \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=you@example.com&password=str0ngPassword!"
+```
+
+Use the returned `access_token` as a bearer token for protected endpoints:
+
+```bash
+curl http://localhost:8000/api/v1/users/me \
+  -H "Authorization: Bearer <access_token>"
+```
+
+The web app also supports register/login flows at `/register` and `/login`.
+
 ### Local workspace dev
 
 ```bash
