@@ -29,6 +29,11 @@ class Snapshot(Base):
         nullable=False,
         index=True,
     )
+    process_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("processes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     date: Mapped[date] = mapped_column(Date, nullable=False)
     label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     trigger: Mapped[SnapshotTrigger] = mapped_column(

@@ -35,14 +35,18 @@ async def take_snapshot(
     user_id: uuid.UUID,
     snapshot_date: date,
     label: str | None,
+    process_id: uuid.UUID | None = None,
+    concept_ids: list[uuid.UUID] | None = None,
 ) -> Snapshot:
-    concepts_result = await session.execute(
-        select(Concept).where(Concept.user_id == user_id)
-    )
+    query = select(Concept).where(Concept.user_id == user_id)
+    if concept_ids is not None:
+        query = query.where(Concept.id.in_(concept_ids))
+    concepts_result = await session.execute(query)
     concepts = list(concepts_result.scalars().all())
 
     snapshot = Snapshot(
         user_id=user_id,
+        process_id=process_id,
         date=snapshot_date,
         label=label,
         trigger=SnapshotTrigger.manual,

@@ -34,6 +34,7 @@ class SnapshotRead(BaseModel):
 
     id: uuid.UUID
     user_id: uuid.UUID
+    process_id: uuid.UUID | None
     date: date
     label: str | None
     trigger: SnapshotTrigger

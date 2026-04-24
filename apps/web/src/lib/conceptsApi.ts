@@ -70,3 +70,12 @@ export async function getCurrencies(): Promise<CurrencyRead[]> {
   const res = await apiFetch<{ items: CurrencyRead[] }>('/api/v1/currencies')
   return res.items
 }
+
+export interface ConceptInitResponse {
+  created: ConceptRead[]
+  skipped: string[]
+}
+
+export async function initConcepts(): Promise<ConceptInitResponse> {
+  return apiFetch<ConceptInitResponse>('/api/v1/init/concepts', { method: 'POST' })
+}

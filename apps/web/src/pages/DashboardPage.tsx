@@ -4,9 +4,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../features/auth/useAuth'
 import ConceptList from '../features/concepts/ConceptList'
 import ConceptForm from '../features/concepts/ConceptForm'
+import ConceptInitButton from '../features/concepts/ConceptInitButton'
 import TakeSnapshotForm from '../features/snapshots/TakeSnapshotForm'
 import PendingEntriesForm from '../features/snapshots/PendingEntriesForm'
 import SnapshotList from '../features/snapshots/SnapshotList'
+import ProcessForm from '../features/processes/ProcessForm'
+import ProcessList from '../features/processes/ProcessList'
 import { getConcepts } from '../lib/conceptsApi'
 import type { SnapshotDetail } from '../lib/snapshotsApi'
 
@@ -16,6 +19,7 @@ export default function DashboardPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [showConceptForm, setShowConceptForm] = useState(false)
+  const [showProcessForm, setShowProcessForm] = useState(false)
   const [snapshotStep, setSnapshotStep] = useState<SnapshotStep>('idle')
   const [activeSnapshot, setActiveSnapshot] = useState<SnapshotDetail | null>(null)
 
@@ -47,6 +51,7 @@ export default function DashboardPage() {
 
       <section>
         <h2>Concepts</h2>
+        <ConceptInitButton />
         {showConceptForm ? (
           <>
             <ConceptForm onSuccess={() => setShowConceptForm(false)} />
@@ -56,6 +61,19 @@ export default function DashboardPage() {
           <button onClick={() => setShowConceptForm(true)}>Add concept</button>
         )}
         <ConceptList />
+      </section>
+
+      <section>
+        <h2>Processes</h2>
+        {showProcessForm ? (
+          <>
+            <ProcessForm onSuccess={() => setShowProcessForm(false)} />
+            <button onClick={() => setShowProcessForm(false)}>Cancel</button>
+          </>
+        ) : (
+          <button onClick={() => setShowProcessForm(true)}>Add process</button>
+        )}
+        <ProcessList />
       </section>
 
       <section>

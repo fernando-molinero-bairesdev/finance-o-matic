@@ -18,6 +18,9 @@ from app.models import concept as _concept_model  # noqa: F401
 from app.models import concept_dependency as _concept_dependency_model  # noqa: F401
 from app.models import snapshot as _snapshot_model  # noqa: F401
 from app.models import concept_entry as _concept_entry_model  # noqa: F401
+from app.models import process as _process_model  # noqa: F401
+from app.models import process_schedule as _process_schedule_model  # noqa: F401
+from app.models import process_concept as _process_concept_model  # noqa: F401
 
 
 @asynccontextmanager

@@ -19,7 +19,13 @@
       "Bash(node scripts/run-python.cjs -m alembic current)",
       "Bash(node scripts/run-python.cjs -m alembic stamp 0002)",
       "Bash(python scripts/seed_currencies.py)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(python -m pytest tests/test_concept_init.py -x -q)",
+      "Bash(python -m pytest tests/test_concept_init.py -v)",
+      "Bash(python -m pytest tests/ -q)",
+      "Bash(python -m pytest tests/test_processes_crud.py tests/test_process_snapshots.py -x -q)",
+      "Bash(python -m pytest tests/test_processes_crud.py tests/test_process_snapshots.py -v)",
+      "Bash(python -m pytest tests/test_processes_crud.py tests/test_process_snapshots.py tests/test_concept_init.py -v)"
     ]
   }
 }
