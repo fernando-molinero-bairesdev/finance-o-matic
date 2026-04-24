@@ -269,6 +269,26 @@ def evaluate_concept_by_id(concept_id: uuid.UUID, concepts: Iterable[Concept]) -
                         )
                     variables[ref_name] = evaluate_node(ref_concept.id)
                 result = _evaluate_expression(concept.expression, variables)
+            elif concept.kind == ConceptKind.group:
+                children = [c for c in concept_list if c.parent_group_id == node_id]
+                if not children:
+                    raise FormulaEvaluationError(f"Group '{concept.name}' has no children to aggregate")
+                op = concept.aggregate_op
+                if op is None:
+                    raise FormulaEvaluationError(f"Group '{concept.name}' has no aggregate_op set")
+                child_values = [evaluate_node(child.id) for child in children]
+                if op == "sum":
+                    result = float(sum(child_values))
+                elif op == "avg":
+                    result = float(sum(child_values) / len(child_values))
+                elif op == "min":
+                    result = float(min(child_values))
+                elif op == "max":
+                    result = float(max(child_values))
+                else:
+                    raise FormulaEvaluationError(
+                        f"Group '{concept.name}': unknown aggregate op '{op}'"
+                    )
             else:
                 raise FormulaEvaluationError(
                     f"Concept kind '{concept.kind.value}' is not evaluable yet"

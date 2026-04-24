@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(python -m pytest tests/test_concept_model.py -v)",
+      "Bash(python -m pip install -e \".[dev]\" -q)",
+      "Bash(python -m pytest tests/test_concept_schemas.py -v)",
+      "Bash(python -m pytest tests/test_concepts_crud.py -v --tb=no -q)",
+      "Bash(python -m pytest tests/test_concepts_crud.py -v --tb=short -q)",
+      "Bash(python -m pytest tests/test_concepts_crud.py -q --tb=no)",
+      "Bash(python -m pytest tests/test_currencies.py tests/test_group_evaluation.py -q --tb=no)",
+      "Bash(python -m pytest tests/test_currencies.py tests/test_group_evaluation.py -q --tb=short)",
+      "Bash(python -m pytest tests/ -q --tb=short)",
+      "Bash(pnpm test *)",
+      "Bash(npx vitest *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(pnpm db:migrate)",
+      "Bash(node scripts/run-python.cjs -m alembic current)",
+      "Bash(node scripts/run-python.cjs -m alembic stamp 0002)",
+      "Bash(python scripts/seed_currencies.py)",
+      "Bash(xargs grep *)"
+    ]
+  }
+}

@@ -99,9 +99,13 @@ Copy `.env.example` to `.env`. Key variables:
 **Database:** `app/core/db.py` — SQLAlchemy 2.0 async engine + session factory. All models inherit from a shared `Base`. Sessions are provided via a `get_async_session` dependency. The same codebase switches between SQLite (local) and Postgres (production) via `DATABASE_URL`.
 
 **Models:**
-- `Concept` — Core entity. `ConceptKind` enum: `value` (literal), `formula` (references others), `group` (aggregates), `aux` (auxiliary/reference-only).
+- `Concept` — Core entity. `ConceptKind` enum: `value` (literal), `formula` (references others), `group` (aggregates), `aux` (auxiliary/reference-only). `ConceptCarryBehaviour` enum: `auto` (recomputed each snapshot), `copy` (carry forward from prior entry), `manual` (user must enter), `copy_or_manual` (copy if prior exists, else prompt). Defaults: `formula`/`group` → `auto`; `value` → `copy_or_manual`; `aux` → `copy`.
 - `ConceptDependency` — Tracks edges in the concept DAG for UI visualization and cycle detection.
 - `Currency` / `FxRate` — Reference tables for multi-currency support.
+- `Process` — Reusable snapshot template; defines name, cadence (`daily|weekly|monthly|quarterly|manual`), trigger type, and concept scope (`all|selected`).
+- `ProcessSchedule` — Tracks `next_run_at` / `last_run_at` for scheduled processes. APScheduler drives execution.
+- `Snapshot` — One run of a Process; records date, label, trigger, and status (`pending|complete|failed`).
+- `ConceptEntry` — Single ledger line within a Snapshot: evaluated value, currency, `carry_behaviour_used` (audit), `formula_snapshot` (frozen formula string at evaluation time), `is_pending` flag.
 
 **Formula Engine (`app/services/formula/engine.py`):** The most critical service. Uses Python's `ast` module + `simpleeval` for safe, sandboxed formula evaluation — no `eval()` of untrusted strings. Key functions:
 - `parse_formula()` — Validates syntax; only allows whitelisted operators and functions (`sum`, `min`, `max`, `if_`).
@@ -128,11 +132,16 @@ Copy `.env.example` to `.env`. Key variables:
 3. Backend evaluates concepts by resolving the DAG via the formula engine
 4. Formula results are returned as evaluated numeric values per concept
 
-## Current Development Stage (M1)
+## Current Development Stage (M1 complete)
 
 Authentication, core data models, and the formula engine are complete. The concepts CRUD endpoints are partially scaffolded. The dashboard UI is a placeholder.
 
-Upcoming milestones: concept CRUD UI, groups/aggregation, FX rate integration, historical snapshots, and charting.
+**Upcoming milestones:**
+- **M2** — Concept CRUD UI + Carry Behaviour: full CRUD endpoints and UI, `carry_behaviour` field on Concept, groups/aggregation, FX rate integration.
+- **M3** — Snapshots + ConceptEntry: `Snapshot` and `ConceptEntry` models, take-snapshot endpoint implementing the full automation flow, pending-entry resolution UI.
+- **M4** — Processes: `Process` and `ProcessSchedule` models, Process CRUD UI, wire Snapshots to Processes.
+- **M5** — Scheduled & Event Triggers: APScheduler integration, event-driven triggers from CRUD mutations, FX rate event triggers.
+- **M6** — Charting: time-series queries over ConceptEntry, D3 dashboard charts (net worth over time, per-concept trends).
 
 ## Testing Strategy
 

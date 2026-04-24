@@ -219,11 +219,13 @@ Parse expressions to an AST once, extract dependency edges, store them, run topo
 - `users` — from fastapi-users
 - `currencies` — code, name
 - `fx_rates` — base_code, quote_code, rate, as_of
-- `concepts` — id, user_id, name, kind (`value|formula|group|aux`), currency_code, literal_value, expression, parent_group_id (nullable), aggregate_op (for groups)
+- `concepts` — id, user_id, name, kind (`value|formula|group|aux`), carry_behaviour (`auto|copy|manual|copy_or_manual`), currency_code, literal_value, expression, parent_group_id (nullable), aggregate_op (for groups)
 - `concept_dependencies` — concept_id → depends_on_concept_id (derived from parse)
 - `group_memberships` — group_id, member_concept_id (explicit, more flexible than parent_group_id)
-- `snapshots` — id, user_id, taken_at
-- `snapshot_values` — snapshot_id, concept_id, evaluated_value, display_currency, converted_value
+- `processes` — id, user_id, name, description, cadence, trigger_type, concept_scope (`all|selected`), selected_concept_ids, is_active
+- `process_schedules` — process_id, cadence, next_run_at, last_run_at
+- `snapshots` — id, process_id, user_id, label, date, trigger, status (`pending|complete|failed`)
+- `concept_entries` — id, snapshot_id, concept_id, value, currency_id, carry_behaviour_used, formula_snapshot, is_pending
 
 Later specializations (loans, investments) layer on as typed "kinds" with extra columns or a JSONB details blob.
 
@@ -234,6 +236,7 @@ REST under `/api/v1`:
 - `/auth/*`
 - `/concepts`
 - `/concepts/{id}/evaluate`
+- `/processes`
 - `/snapshots`
 - `/fx-rates`
 - `/me`
@@ -302,43 +305,35 @@ Turborepo pipelines: `dev`, `build`, `test`, `lint`, `typecheck`. The Python app
 
 ## 4. Milestones & Task Breakdown
 
-### M0 — Scaffolding (1–2 days)
+### M0 — Scaffolding ✓ COMPLETE
 
 pnpm workspace + Turbo; Vite React TS app; FastAPI app with health check; Dockerfiles; compose with Postgres; GitHub Actions CI green; OpenAPI → `packages/types` codegen wired.
 
-### M1 — Auth + core data model (2–3 days)
+### M1 — Auth + core data model + formula engine ✓ COMPLETE
 
-`fastapi-users` JWT; users, currencies, fx_rates, concepts tables; Alembic baseline; login/register UI; protected route skeleton; seed script for currencies.
+`fastapi-users` JWT; users, currencies, fx_rates, concepts tables; Alembic baseline; login/register UI; protected route skeleton; seed script for currencies. Formula engine: parser, AST, whitelist, dependency extraction, cycle detection, evaluator, `POST /concepts/{id}/evaluate`.
 
-### M2 — Formula engine (3–4 days)
+### M2 — Concept CRUD UI + Carry Behaviour
 
-Parser, AST, whitelist, dependency extraction, cycle detection, evaluator, `POST /concepts/{id}/evaluate`. Heavy unit tests here — this is the correctness-critical piece.
+Full concept CRUD endpoints and UI (list/create/edit/delete); inline evaluated value; currency selector; error surfacing for bad formulas. Add `carry_behaviour` field to Concept (`auto|copy|manual|copy_or_manual`). Groups and aggregation: `group` kind, membership endpoints, aggregate ops (`sum`, `avg`, `min`, `max`), UI for nesting. FX fetch job, per-user display currency, conversion on read.
 
-### M3 — Concept CRUD UI (2–3 days)
+### M3 — Snapshots + ConceptEntry
 
-List/create/edit/delete concepts; inline evaluated value; currency selector; error surfacing for bad formulas.
+`Snapshot` and `ConceptEntry` models + migrations. Take-snapshot endpoint: for each concept in scope apply its `carry_behaviour` (`auto` → run formula engine, `copy` → carry prior value, `copy_or_manual`/`manual` → set `is_pending`). Snapshot status stays `pending` until all pending entries are filled; resolves to `complete`. Manual trigger from UI. Pending-entry resolution flow.
 
-### M4 — Groups + aggregation (2 days)
+### M4 — Processes
 
-`group` kind, membership endpoints, aggregate ops (`sum`, `avg`, `min`, `max`), UI for nesting.
+`Process` and `ProcessSchedule` models + migrations. Process CRUD UI (define name, cadence, trigger type, concept scope). Wire Snapshots to Processes — every Snapshot belongs to a Process.
 
-### M5 — FX + display currency (1–2 days)
+### M5 — Scheduled & Event Triggers
 
-FX fetch job, per-user display currency, conversion on read in evaluator and snapshots.
+APScheduler integration (integrates with FastAPI lifespan) for scheduled processes. Event-driven triggers fired from CRUD mutation endpoints (`fx_rate_updated`, `concept_value_edited`, `manual_override`). FX rate event triggers.
 
-### M6 — Snapshots + D3 chart (2–3 days)
+### M6 — Charting
 
-Take/list snapshots; net-worth-over-time D3 line chart; per-concept time series.
-
-### M7 — Specializations: loans & investments (3–4 days)
-
-Loan concept: principal, rate, term, amortization projection as auxiliary values. Investment concept: cost basis, current value, unrealized gain.
-
-### M8 — Polish & deploy (2 days)
-
-Error boundaries, empty states, README, deploy to Fly/Render, backup strategy for Postgres.
+Time-series queries over ConceptEntry by concept + date range. D3 dashboard charts: net worth over time, per-concept trends.
 
 ### Testing strategy (baked in per milestone)
 
-- **Backend:** pytest for every service + router; formula engine gets a big table-driven suite (valid exprs, invalid exprs, cycles, cross-user access attempts).
+- **Backend:** pytest for every service + router; formula engine gets a big table-driven suite (valid exprs, invalid exprs, cycles, cross-user access attempts); snapshot automation flow tested with in-memory DB.
 - **Frontend:** Vitest + RTL for feature components; MSW for API mocking; one Playwright smoke test (login → create concept → see value) in CI.

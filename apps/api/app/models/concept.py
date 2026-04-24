@@ -15,6 +15,20 @@ class ConceptKind(str, enum.Enum):
     aux = "aux"
 
 
+class ConceptCarryBehaviour(str, enum.Enum):
+    auto = "auto"
+    copy = "copy"
+    copy_or_manual = "copy_or_manual"
+
+
+_CARRY_DEFAULTS: dict[ConceptKind, ConceptCarryBehaviour] = {
+    ConceptKind.formula: ConceptCarryBehaviour.auto,
+    ConceptKind.group:   ConceptCarryBehaviour.auto,
+    ConceptKind.value:   ConceptCarryBehaviour.copy_or_manual,
+    ConceptKind.aux:     ConceptCarryBehaviour.copy,
+}
+
+
 class Concept(Base):
     __tablename__ = "concepts"
 
@@ -33,6 +47,10 @@ class Concept(Base):
         ForeignKey("currencies.code", ondelete="RESTRICT"),
         nullable=False,
     )
+    carry_behaviour: Mapped[ConceptCarryBehaviour] = mapped_column(
+        SQLEnum(ConceptCarryBehaviour, name="conceptcarrybehaviour"),
+        nullable=False,
+    )
     literal_value: Mapped[float | None] = mapped_column(nullable=True)
     expression: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_group_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -44,3 +62,8 @@ class Concept(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_concept_user_name"),
     )
+
+    def __init__(self, **kwargs):
+        if "carry_behaviour" not in kwargs and "kind" in kwargs:
+            kwargs["carry_behaviour"] = _CARRY_DEFAULTS[kwargs["kind"]]
+        super().__init__(**kwargs)

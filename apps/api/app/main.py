@@ -16,6 +16,8 @@ from app.models import currency as _currency_model  # noqa: F401
 from app.models import fx_rate as _fx_rate_model  # noqa: F401
 from app.models import concept as _concept_model  # noqa: F401
 from app.models import concept_dependency as _concept_dependency_model  # noqa: F401
+from app.models import snapshot as _snapshot_model  # noqa: F401
+from app.models import concept_entry as _concept_entry_model  # noqa: F401
 
 
 @asynccontextmanager

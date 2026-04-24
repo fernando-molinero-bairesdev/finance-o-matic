@@ -33,6 +33,7 @@ ISO_CURRENCIES: list[tuple[str, str]] = [
     ("EUR", "Euro"),
     ("GBP", "British Pound Sterling"),
     ("HKD", "Hong Kong Dollar"),
+    ("HNL", "Honduran Lempira"),
     ("HUF", "Hungarian Forint"),
     ("IDR", "Indonesian Rupiah"),
     ("ILS", "Israeli New Shekel"),
