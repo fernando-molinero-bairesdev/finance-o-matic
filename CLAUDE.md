@@ -87,6 +87,8 @@ Copy `.env.example` to `.env`. Key variables:
 | `JWT_LIFETIME_SECONDS` | `3600` | Token expiry |
 | `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON array of allowed origins |
 | `VITE_API_BASE_URL` | `http://localhost:8000` | Consumed by Vite at build time |
+| `FX_BASE_CURRENCY` | `USD` | Base currency for frankfurter.app FX rate fetch |
+| `SCHEDULED_JOBS_ENABLED` | `True` | Set to `False` in tests to skip APScheduler startup |
 
 ## Architecture
 
@@ -102,10 +104,10 @@ Copy `.env.example` to `.env`. Key variables:
 - `Concept` — Core entity. `ConceptKind` enum: `value` (literal), `formula` (references others), `group` (aggregates), `aux` (auxiliary/reference-only). `ConceptCarryBehaviour` enum: `auto` (recomputed each snapshot), `copy` (carry forward from prior entry), `copy_or_manual` (copy if prior exists, else prompt). Defaults: `formula`/`group` → `auto`; `value` → `copy_or_manual`; `aux` → `copy`.
 - `ConceptDependency` — Tracks edges in the concept DAG for UI visualization and cycle detection.
 - `Currency` / `FxRate` — Reference tables for multi-currency support.
-- `Snapshot` — One instance of a snapshot run; records `date`, `label`, `trigger` (`manual` for now), and `status` (`pending|complete|failed`). Status is `pending` when any entries need user input; transitions to `complete` when all entries are resolved.
+- `Snapshot` — One instance of a snapshot run; records `date`, `label`, `trigger` (`manual|scheduled`), and `status` (`pending|complete|failed`). Status is `pending` when any entries need user input; transitions to `complete` when all entries are resolved.
 - `ConceptEntry` — Single ledger line within a Snapshot: evaluated `value`, `currency_code`, `carry_behaviour_used` (audit trail), `formula_snapshot` (frozen formula string at evaluation time), `is_pending` flag. Pending entries are those with `copy_or_manual` or `copy` behaviour that had no prior value to copy.
-- `Process` — (M4) Reusable snapshot template; defines name, cadence (`daily|weekly|monthly|quarterly|manual`), trigger type, and concept scope (`all|selected`).
-- `ProcessSchedule` — (M4) Tracks `next_run_at` / `last_run_at` for scheduled processes. APScheduler drives execution.
+- `Process` — Reusable snapshot template; defines name, cadence (`daily|weekly|monthly|quarterly|manual`), `is_active` flag, and concept scope (`all|selected`). When `is_active=True` and cadence is not `manual`, a `ProcessSchedule` row is maintained.
+- `ProcessSchedule` — Tracks `next_run_at` / `last_run_at` for scheduled processes. `next_run_at` is recalculated whenever the process cadence changes or `is_active` is set to `True`. APScheduler polls this table daily at 00:05.
 
 **Formula Engine (`app/services/formula/engine.py`):** The most critical service. Uses Python's `ast` module + `simpleeval` for safe, sandboxed formula evaluation — no `eval()` of untrusted strings. Key functions:
 - `parse_formula()` — Validates syntax; only allows whitelisted operators and functions (`sum`, `min`, `max`, `if_`).
@@ -113,11 +115,16 @@ Copy `.env.example` to `.env`. Key variables:
 - `detect_cycles()` — DFS cycle detection on the concept dependency graph.
 - `evaluate_concept_by_id()` — Recursive evaluation with memoization.
 
+**Scheduler (`app/core/scheduler.py` + `app/services/scheduled_jobs.py`):** APScheduler `AsyncIOScheduler` started in the FastAPI lifespan (disabled when `settings.scheduled_jobs_enabled=False`, e.g. in tests). Two jobs:
+- `run_due_processes` — runs at 00:05 daily; queries active `ProcessSchedule` rows with `next_run_at <= today`, calls `take_snapshot` with `trigger=scheduled`, advances `next_run_at`.
+- `fetch_fx_rates` — runs at 06:00 daily; fetches from `https://api.frankfurter.app/latest?from={fx_base_currency}` via `httpx`, upserts `FxRate` rows.
+
 **API routes:** All under `/api/v1/`. Auth routes (`/auth/register`, `/auth/jwt/login`, `/users/me`, etc.) are mounted by fastapi-users. Custom routes are in `app/api/v1/`:
 - `app/api/v1/concepts.py` — full Concept CRUD + `POST /{id}/evaluate`
 - `app/api/v1/currencies.py` — `GET /currencies`
 - `app/api/v1/snapshots.py` — `POST /snapshots`, `GET /snapshots`, `GET /snapshots/{id}`, `PATCH /snapshots/{id}/entries/{entry_id}`
 - `app/api/v1/init.py` — `POST /init/concepts` (idempotent starter-concept seed)
+- `app/api/v1/processes.py` — full Process CRUD: `POST /processes`, `GET /processes`, `GET /processes/{id}`, `PUT /processes/{id}`, `DELETE /processes/{id}`, `POST /processes/{id}/snapshots` (trigger ad-hoc snapshot for a process)
 
 ### Frontend (`apps/web`)
 
@@ -127,9 +134,12 @@ Copy `.env.example` to `.env`. Key variables:
 
 **Routing:** React Router v7. Public routes: `/login`, `/register`. Protected routes: `/` (dashboard) and future pages.
 
-**Dashboard:** `pages/DashboardPage.tsx` has two main sections:
+**UI primitives** live in `src/components/ui/`: `Button` (variant: primary/secondary/danger/ghost, size: sm/md), `FormField` (label + children + error, exports `inputClass`/`selectClass`), `Badge` (variant: success/pending/warning/neutral/purple). Tailwind CSS v4 is used via `@tailwindcss/vite`; all colors come from CSS custom properties (`--accent`, `--bg`, `--border`, etc.) applied as Tailwind arbitrary values.
+
+**Dashboard:** `pages/DashboardPage.tsx` is a full app shell (sticky header + `max-w-2xl` centered main) with three card sections:
 - *Concepts* — `ConceptInitButton` (seeds starter concepts), `ConceptForm` (add concept), `ConceptList` (list + delete)
-- *Snapshots* — `TakeSnapshotForm` (date + label), `PendingEntriesForm` (inline resolution for `copy_or_manual` entries with no prior value), `SnapshotList` (history)
+- *Processes* — `ProcessForm` (create/edit, with concept multi-select when scope=selected), `ProcessList` (edit, toggle active, take ad-hoc snapshot, delete)
+- *Snapshots* — `TakeSnapshotForm` (date + label), `PendingEntriesForm` (inline resolution for `copy_or_manual` entries with no prior value), `SnapshotList` (history with status Badge)
 
 ### Data Flow
 
@@ -139,18 +149,19 @@ Copy `.env.example` to `.env`. Key variables:
 4. `POST /snapshots` triggers the take-snapshot service: evaluates `auto` concepts via the formula engine, carries forward `copy` values from the prior snapshot, marks `copy_or_manual` entries with no prior value as `is_pending`
 5. User resolves pending entries via `PATCH /snapshots/{id}/entries/{entry_id}`; snapshot transitions to `complete` when all entries are resolved
 
-## Current Development Stage (M3 complete)
+## Current Development Stage (M5 complete)
 
-Authentication, core data models, formula engine, full Concept CRUD, Snapshot + ConceptEntry, concept initialization, and the pending-entry resolution flow are all complete and fully tested.
+Authentication, core data models, formula engine, full Concept CRUD, Snapshot + ConceptEntry, concept initialization, pending-entry resolution, Process CRUD, APScheduler integration, FX rate fetching, and a full responsive UI are all complete and fully tested.
 
 **Completed milestones:**
 - **M1** — Auth, core models, formula engine
 - **M2** — Concept CRUD UI + carry behaviour field, groups/aggregation
 - **M3** — Snapshots + ConceptEntry: take-snapshot endpoint, pending-entry resolution UI, `POST /init/concepts` starter-concept seed (TDD throughout)
+- **M4** — Processes: `Process` + `ProcessSchedule` models, full Process CRUD API + frontend (create/edit/delete, is_active toggle, ad-hoc snapshot per process, concept multi-select for `selected` scope)
+- **M5** — Scheduled & Event Triggers: APScheduler daily polling job (`run_due_processes`), FX rate fetching from `frankfurter.app` (`fetch_fx_rates`), `ProcessSchedule` lifecycle sync on PUT (cadence change or reactivation recalculates `next_run_at`), `SnapshotTrigger.scheduled` enum value
+- **Responsive UI** — Tailwind CSS v4, shared UI primitives (Button, FormField, Badge), full mobile-first visual overhaul of all pages and feature components
 
 **Upcoming milestones:**
-- **M4** — Processes: `Process` and `ProcessSchedule` models, Process CRUD UI, wire Snapshots to Processes (replace manual trigger with process-driven cadence).
-- **M5** — Scheduled & Event Triggers: APScheduler integration, event-driven triggers from CRUD mutations, FX rate event triggers.
 - **M6** — Charting: time-series queries over ConceptEntry, D3 dashboard charts (net worth over time, per-concept trends).
 
 ## Testing Strategy
@@ -165,10 +176,16 @@ All new features from M3 onward are developed TDD: tests are written first (RED)
   - `test_concept_init.py` — integration tests for `POST /init/concepts` (idempotency, formula eval, group membership)
   - `test_currencies.py` — currency endpoint tests
   - `test_group_evaluation.py` — group aggregation tests
+  - `test_processes_crud.py` — Process CRUD + lifecycle sync (cadence change / reactivation recalculates `next_run_at`)
+  - `test_process_snapshots.py` — `POST /processes/{id}/snapshots` ad-hoc snapshot trigger
+  - `test_scheduled_jobs.py` — `run_due_processes` job (uses `StaticPool` for multi-session in-memory SQLite)
+  - `test_fx_service.py` — `fetch_fx_rates` job (httpx mocked with async context manager)
 - **Frontend:** Vitest + React Testing Library with jsdom.
   - `features/auth/auth.test.tsx` — auth flows and route guards
   - `features/concepts/ConceptForm.test.tsx` — concept creation form
   - `features/concepts/ConceptList.test.tsx` — concept list rendering
   - `features/concepts/ConceptInitButton.test.tsx` — initialization button states
+  - `features/processes/ProcessForm.test.tsx` — create + edit mode, concept picker for `selected` scope
+  - `features/processes/ProcessList.test.tsx` — edit inline, active toggle, ad-hoc snapshot
   - `lib/conceptsApi.test.ts` — API client unit tests
   - `pages/DashboardPage.test.tsx` — dashboard integration

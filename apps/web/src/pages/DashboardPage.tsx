@@ -1,133 +1,83 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { useAuth } from '../features/auth/useAuth'
-import ConceptList from '../features/concepts/ConceptList'
-import ConceptForm from '../features/concepts/ConceptForm'
-import ConceptInitButton from '../features/concepts/ConceptInitButton'
-import TakeSnapshotForm from '../features/snapshots/TakeSnapshotForm'
-import PendingEntriesForm from '../features/snapshots/PendingEntriesForm'
-import SnapshotList from '../features/snapshots/SnapshotList'
-import ProcessForm from '../features/processes/ProcessForm'
-import ProcessList from '../features/processes/ProcessList'
-import { getConcepts } from '../lib/conceptsApi'
-import type { SnapshotDetail } from '../lib/snapshotsApi'
-import Button from '../components/ui/Button'
+import { getProcesses } from '../lib/processesApi'
+import { getSnapshots } from '../lib/snapshotsApi'
+import Badge from '../components/ui/Badge'
 
-type SnapshotStep = 'idle' | 'form' | 'pending'
+type SnapshotStatus = 'pending' | 'complete' | 'failed'
+
+function statusVariant(status: SnapshotStatus) {
+  if (status === 'complete') return 'success'
+  if (status === 'pending') return 'pending'
+  return 'warning'
+}
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
-  const [showConceptForm, setShowConceptForm] = useState(false)
-  const [showProcessForm, setShowProcessForm] = useState(false)
-  const [snapshotStep, setSnapshotStep] = useState<SnapshotStep>('idle')
-  const [activeSnapshot, setActiveSnapshot] = useState<SnapshotDetail | null>(null)
-
-  const { data: concepts } = useQuery({
-    queryKey: ['concepts'],
-    queryFn: getConcepts,
+  const { data: processes, isLoading: loadingProcesses } = useQuery({
+    queryKey: ['processes'],
+    queryFn: getProcesses,
   })
 
-  const conceptNames: Record<string, string> = Object.fromEntries(
-    (concepts ?? []).map((c) => [c.id, c.name]),
-  )
+  const { data: snapshots, isLoading: loadingSnapshots } = useQuery({
+    queryKey: ['snapshots'],
+    queryFn: getSnapshots,
+  })
 
-  function handleLogout() {
-    logout()
-    navigate('/login')
-  }
-
-  function handleSnapshotTaken(snapshot: SnapshotDetail) {
-    setActiveSnapshot(snapshot)
-    const hasPending = snapshot.entries.some((e) => e.is_pending)
-    setSnapshotStep(hasPending ? 'pending' : 'idle')
-  }
+  const activeProcesses = (processes ?? []).filter((p) => p.is_active)
+  const recentSnapshots = (snapshots ?? []).slice(0, 5)
 
   return (
-    <div className="min-h-svh flex flex-col bg-[var(--bg)]">
-      <header className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--bg)] px-4 py-3">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <span className="text-sm font-semibold text-[var(--text-h)]">finance-o-matic</span>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-[var(--text)] hidden sm:block">{user?.email}</span>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              Sign out
-            </Button>
-          </div>
+    <>
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
+        <div className="px-4 py-3 border-b border-[var(--border)]">
+          <h2 className="text-sm font-semibold text-[var(--text-h)]">Active Processes</h2>
         </div>
-      </header>
+        <div className="p-4">
+          {loadingProcesses && <p className="text-sm text-[var(--text)]">Loading...</p>}
+          {!loadingProcesses && !activeProcesses.length && (
+            <p className="text-sm text-[var(--text)]">No active processes.</p>
+          )}
+          {!loadingProcesses && activeProcesses.length > 0 && (
+            <ul className="divide-y divide-[var(--border)] -mx-4">
+              {activeProcesses.map((p) => (
+                <li key={p.id} className="px-4 py-3 flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-sm font-medium text-[var(--text-h)]">{p.name}</span>
+                    <span className="text-xs text-[var(--text)] ml-2">({p.cadence})</span>
+                  </div>
+                  <span className="text-xs text-[var(--text)] shrink-0">
+                    {p.schedule?.next_run_at ? `next: ${p.schedule.next_run_at}` : '—'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-6 space-y-4">
-
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-            <h2 className="text-sm font-semibold text-[var(--text-h)]">Concepts</h2>
-            <div className="flex items-center gap-2">
-              <ConceptInitButton />
-              {!showConceptForm && (
-                <Button size="sm" onClick={() => setShowConceptForm(true)}>
-                  Add concept
-                </Button>
-              )}
-            </div>
-          </div>
-          <div className="p-4 space-y-4">
-            {showConceptForm && (
-              <ConceptForm onSuccess={() => setShowConceptForm(false)} onCancel={() => setShowConceptForm(false)} />
-            )}
-            <ConceptList />
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-            <h2 className="text-sm font-semibold text-[var(--text-h)]">Processes</h2>
-            {!showProcessForm && (
-              <Button size="sm" onClick={() => setShowProcessForm(true)}>
-                Add process
-              </Button>
-            )}
-          </div>
-          <div className="p-4 space-y-4">
-            {showProcessForm && (
-              <ProcessForm onSuccess={() => setShowProcessForm(false)} onCancel={() => setShowProcessForm(false)} />
-            )}
-            <ProcessList />
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-            <h2 className="text-sm font-semibold text-[var(--text-h)]">Snapshots</h2>
-            {snapshotStep === 'idle' && (
-              <Button size="sm" onClick={() => setSnapshotStep('form')}>
-                Take snapshot
-              </Button>
-            )}
-          </div>
-          <div className="p-4 space-y-4">
-            {snapshotStep === 'form' && (
-              <TakeSnapshotForm
-                onSnapshot={handleSnapshotTaken}
-                onCancel={() => setSnapshotStep('idle')}
-              />
-            )}
-            {snapshotStep === 'pending' && activeSnapshot && (
-              <PendingEntriesForm
-                snapshot={activeSnapshot}
-                conceptNames={conceptNames}
-                onDone={() => {
-                  setSnapshotStep('idle')
-                  setActiveSnapshot(null)
-                }}
-              />
-            )}
-            <SnapshotList />
-          </div>
-        </section>
-
-      </main>
-    </div>
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
+        <div className="px-4 py-3 border-b border-[var(--border)]">
+          <h2 className="text-sm font-semibold text-[var(--text-h)]">Recent Snapshots</h2>
+        </div>
+        <div className="p-4">
+          {loadingSnapshots && <p className="text-sm text-[var(--text)]">Loading...</p>}
+          {!loadingSnapshots && !recentSnapshots.length && (
+            <p className="text-sm text-[var(--text)]">No snapshots yet.</p>
+          )}
+          {!loadingSnapshots && recentSnapshots.length > 0 && (
+            <ul className="divide-y divide-[var(--border)] -mx-4">
+              {recentSnapshots.map((s) => (
+                <li key={s.id} className="px-4 py-3 flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-sm font-medium text-[var(--text-h)]">{s.date}</span>
+                    {s.label && <span className="text-xs text-[var(--text)] ml-2">— {s.label}</span>}
+                  </div>
+                  <Badge variant={statusVariant(s.status as SnapshotStatus)}>{s.status}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+    </>
   )
 }
