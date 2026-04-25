@@ -38,7 +38,12 @@ export default function ProcessList() {
 
   if (isLoading) return <p className="text-sm text-[var(--text)]">Loading processes...</p>
   if (isError) return <p className="text-sm text-red-500">Error loading processes.</p>
-  if (!data?.length) return <p className="text-sm text-[var(--text)]">No processes yet.</p>
+  if (!data?.length) return (
+    <div className="text-center py-6 space-y-1">
+      <p className="text-sm text-[var(--text-h)] font-medium">No processes yet</p>
+      <p className="text-xs text-[var(--text)]">Add a process to automate periodic snapshots.</p>
+    </div>
+  )
 
   if (editingProcess) {
     return (

@@ -17,7 +17,12 @@ export default function ConceptList() {
 
   if (isLoading) return <p className="text-sm text-[var(--text)]">Loading concepts...</p>
   if (isError) return <p className="text-sm text-red-500">Error loading concepts.</p>
-  if (!data?.length) return <p className="text-sm text-[var(--text)]">No concepts yet.</p>
+  if (!data?.length) return (
+    <div className="text-center py-6 space-y-1">
+      <p className="text-sm text-[var(--text-h)] font-medium">No concepts yet</p>
+      <p className="text-xs text-[var(--text)]">Add your first concept or initialize the starter set above.</p>
+    </div>
+  )
 
   return (
     <ul className="divide-y divide-[var(--border)] -mx-4">

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getProcesses } from '../lib/processesApi'
 import { getSnapshots } from '../lib/snapshotsApi'
@@ -34,7 +35,12 @@ export default function DashboardPage() {
         <div className="p-4">
           {loadingProcesses && <p className="text-sm text-[var(--text)]">Loading...</p>}
           {!loadingProcesses && !activeProcesses.length && (
-            <p className="text-sm text-[var(--text)]">No active processes.</p>
+            <p className="text-sm text-[var(--text)]">
+              No active processes.{' '}
+              <Link to="/processes" className="text-[var(--accent)] hover:underline">
+                Processes →
+              </Link>
+            </p>
           )}
           {!loadingProcesses && activeProcesses.length > 0 && (
             <ul className="divide-y divide-[var(--border)] -mx-4">
@@ -61,7 +67,12 @@ export default function DashboardPage() {
         <div className="p-4">
           {loadingSnapshots && <p className="text-sm text-[var(--text)]">Loading...</p>}
           {!loadingSnapshots && !recentSnapshots.length && (
-            <p className="text-sm text-[var(--text)]">No snapshots yet.</p>
+            <p className="text-sm text-[var(--text)]">
+              No snapshots yet.{' '}
+              <Link to="/reports" className="text-[var(--accent)] hover:underline">
+                Take one →
+              </Link>
+            </p>
           )}
           {!loadingSnapshots && recentSnapshots.length > 0 && (
             <ul className="divide-y divide-[var(--border)] -mx-4">

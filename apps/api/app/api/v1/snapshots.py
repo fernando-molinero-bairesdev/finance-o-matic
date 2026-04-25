@@ -108,11 +108,6 @@ async def resolve_entry(
     entry = entry_result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
-    if not entry.is_pending:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Entry is already resolved"
-        )
-
     entry.value = body.value
     entry.is_pending = False
 
