@@ -9,11 +9,14 @@ from app.auth.users import current_active_user
 from app.core.db import get_async_session
 from app.models.concept import Concept
 from app.models.concept_dependency import ConceptDependency
+from app.models.concept_entry import ConceptEntry
 from app.models.currency import Currency
+from app.models.snapshot import Snapshot, SnapshotStatus
 from app.models.user import User
 from app.schemas.concept import (
     ConceptCreate,
     ConceptEvaluateResponse,
+    ConceptHistoryPoint,
     ConceptListResponse,
     ConceptRead,
     ConceptUpdate,
@@ -166,3 +169,38 @@ async def evaluate_concept(
         value=value,
         direct_dependencies=direct_dependencies,
     )
+
+
+@router.get("/{concept_id}/history", response_model=list[ConceptHistoryPoint])
+async def get_concept_history(
+    concept_id: uuid.UUID,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> list[ConceptHistoryPoint]:
+    await _get_owned_concept_or_404(session, concept_id, current_user.id)
+
+    result = await session.execute(
+        select(
+            ConceptEntry.snapshot_id,
+            Snapshot.date,
+            ConceptEntry.value,
+            ConceptEntry.currency_code,
+        )
+        .join(Snapshot, ConceptEntry.snapshot_id == Snapshot.id)
+        .where(
+            ConceptEntry.concept_id == concept_id,
+            Snapshot.user_id == current_user.id,
+            Snapshot.status == SnapshotStatus.complete,
+        )
+        .order_by(Snapshot.date.asc())
+    )
+
+    return [
+        ConceptHistoryPoint(
+            snapshot_id=row.snapshot_id,
+            date=row.date,
+            value=row.value,
+            currency_code=row.currency_code,
+        )
+        for row in result.all()
+    ]

@@ -1,4 +1,5 @@
 import uuid
+from datetime import date as date_type
 
 from pydantic import BaseModel, ConfigDict
 
@@ -52,3 +53,10 @@ class ConceptEvaluateResponse(BaseModel):
     currency_code: str
     value: float
     direct_dependencies: list[uuid.UUID]
+
+
+class ConceptHistoryPoint(BaseModel):
+    snapshot_id: uuid.UUID
+    date: date_type
+    value: float | None
+    currency_code: str

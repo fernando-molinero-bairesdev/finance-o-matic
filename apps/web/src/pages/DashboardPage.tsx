@@ -1,8 +1,12 @@
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getProcesses } from '../lib/processesApi'
 import { getSnapshots } from '../lib/snapshotsApi'
+import { getConcepts } from '../lib/conceptsApi'
 import Badge from '../components/ui/Badge'
+import ConceptTrendChart from '../features/charts/ConceptTrendChart'
+import { selectClass } from '../components/ui/FormField'
 
 type SnapshotStatus = 'pending' | 'complete' | 'failed'
 
@@ -13,6 +17,8 @@ function statusVariant(status: SnapshotStatus) {
 }
 
 export default function DashboardPage() {
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+
   const { data: processes, isLoading: loadingProcesses } = useQuery({
     queryKey: ['processes'],
     queryFn: getProcesses,
@@ -23,8 +29,25 @@ export default function DashboardPage() {
     queryFn: getSnapshots,
   })
 
+  const { data: concepts } = useQuery({
+    queryKey: ['concepts'],
+    queryFn: getConcepts,
+  })
+
   const activeProcesses = (processes ?? []).filter((p) => p.is_active)
   const recentSnapshots = (snapshots ?? []).slice(0, 5)
+
+  const groupConcepts = useMemo(
+    () => (concepts ?? []).filter((c) => c.kind === 'group'),
+    [concepts],
+  )
+
+  const effectiveGroupId =
+    selectedGroupId && groupConcepts.some((c) => c.id === selectedGroupId)
+      ? selectedGroupId
+      : (groupConcepts[0]?.id ?? null)
+
+  const selectedGroup = groupConcepts.find((c) => c.id === effectiveGroupId)
 
   return (
     <>
@@ -57,6 +80,41 @@ export default function DashboardPage() {
               ))}
             </ul>
           )}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--border)]">
+          <h2 className="text-sm font-semibold text-[var(--text-h)]">Portfolio Trend</h2>
+          {groupConcepts.length > 1 && (
+            <select
+              value={effectiveGroupId ?? ''}
+              onChange={(e) => setSelectedGroupId(e.target.value)}
+              className={`${selectClass} w-auto`}
+              aria-label="Select group concept to chart"
+            >
+              {groupConcepts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="p-4">
+          {groupConcepts.length === 0 ? (
+            <p className="text-sm text-[var(--text)]">
+              No group concepts yet.{' '}
+              <Link to="/concepts" className="text-[var(--accent)] hover:underline">
+                Set one up →
+              </Link>
+            </p>
+          ) : selectedGroup ? (
+            <ConceptTrendChart
+              conceptId={selectedGroup.id}
+              conceptName={selectedGroup.name}
+            />
+          ) : null}
         </div>
       </section>
 

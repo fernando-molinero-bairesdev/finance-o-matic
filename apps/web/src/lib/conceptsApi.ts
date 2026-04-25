@@ -79,3 +79,14 @@ export interface ConceptInitResponse {
 export async function initConcepts(): Promise<ConceptInitResponse> {
   return apiFetch<ConceptInitResponse>('/api/v1/init/concepts', { method: 'POST' })
 }
+
+export interface ConceptHistoryPoint {
+  snapshot_id: string
+  date: string
+  value: number | null
+  currency_code: string
+}
+
+export async function getConceptHistory(id: string): Promise<ConceptHistoryPoint[]> {
+  return apiFetch<ConceptHistoryPoint[]>(`/api/v1/concepts/${id}/history`)
+}
