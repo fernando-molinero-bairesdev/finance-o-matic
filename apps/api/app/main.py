@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
 
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,7 +9,9 @@ from app.api.v1.router import router as v1_router
 from app.auth.users import auth_backend, fastapi_users
 from app.core.config import settings
 from app.core.db import Base, engine
+from app.core.scheduler import scheduler
 from app.schemas.user import UserCreate, UserRead, UserUpdate
+from app.services.scheduled_jobs import fetch_fx_rates, run_due_processes
 
 # Ensure models are imported so their tables register in Base.metadata
 from app.models import user as _user_model  # noqa: F401
@@ -27,7 +30,16 @@ from app.models import process_concept as _process_concept_model  # noqa: F401
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    if settings.scheduled_jobs_enabled:
+        scheduler.add_job(run_due_processes, CronTrigger(hour=0, minute=5), id="run_due_processes")
+        scheduler.add_job(fetch_fx_rates, CronTrigger(hour=6, minute=0), id="fetch_fx_rates")
+        scheduler.start()
+
     yield
+
+    if settings.scheduled_jobs_enabled and scheduler.running:
+        scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="finance-o-matic API", version="0.1.0", lifespan=lifespan)

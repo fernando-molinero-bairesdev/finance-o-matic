@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date as date_type
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -69,7 +69,7 @@ async def create_process(
         await sync_process_concepts(session, process.id, body.selected_concept_ids)
 
     from app.models.process import ProcessCadence
-    nrd = next_run_date(body.cadence, date.today())
+    nrd = next_run_date(body.cadence, date_type.today())
     if nrd is not None:
         session.add(ProcessSchedule(process_id=process.id, next_run_at=nrd))
 
@@ -120,6 +120,20 @@ async def update_process(
 
     if body.selected_concept_ids is not None:
         await sync_process_concepts(session, process.id, body.selected_concept_ids)
+
+    # Recalculate schedule when cadence changes or a deactivated process is re-enabled
+    cadence_changed = body.cadence is not None
+    reactivated = body.is_active is True
+    if cadence_changed or reactivated:
+        sched_result = await session.execute(
+            select(ProcessSchedule).where(ProcessSchedule.process_id == process.id)
+        )
+        schedule = sched_result.scalar_one_or_none()
+        nrd = next_run_date(process.cadence, date_type.today())
+        if schedule is not None:
+            schedule.next_run_at = nrd
+        elif nrd is not None:
+            session.add(ProcessSchedule(process_id=process.id, next_run_at=nrd))
 
     await session.commit()
     await session.refresh(process)

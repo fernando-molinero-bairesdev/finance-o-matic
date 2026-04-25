@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     secret_key: str = _INSECURE_DEFAULT
     jwt_lifetime_seconds: int = 3600
     cors_origins: list[str] = ["http://localhost:5173"]
+    fx_base_currency: str = "USD"
+    scheduled_jobs_enabled: bool = True
 
 
 settings = Settings()

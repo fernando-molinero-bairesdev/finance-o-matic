@@ -25,7 +25,11 @@
       "Bash(python -m pytest tests/ -q)",
       "Bash(python -m pytest tests/test_processes_crud.py tests/test_process_snapshots.py -x -q)",
       "Bash(python -m pytest tests/test_processes_crud.py tests/test_process_snapshots.py -v)",
-      "Bash(python -m pytest tests/test_processes_crud.py tests/test_process_snapshots.py tests/test_concept_init.py -v)"
+      "Bash(python -m pytest tests/test_processes_crud.py tests/test_process_snapshots.py tests/test_concept_init.py -v)",
+      "Bash(pip install *)",
+      "Bash(python -c \"import apscheduler; print\\(apscheduler.__version__\\)\")",
+      "Bash(python -m pytest tests/test_scheduled_jobs.py tests/test_fx_service.py tests/test_processes_crud.py -v)",
+      "Bash(python -m pytest -v)"
     ]
   }
 }

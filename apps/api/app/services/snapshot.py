@@ -37,6 +37,7 @@ async def take_snapshot(
     label: str | None,
     process_id: uuid.UUID | None = None,
     concept_ids: list[uuid.UUID] | None = None,
+    trigger: SnapshotTrigger = SnapshotTrigger.manual,
 ) -> Snapshot:
     query = select(Concept).where(Concept.user_id == user_id)
     if concept_ids is not None:
@@ -49,7 +50,7 @@ async def take_snapshot(
         process_id=process_id,
         date=snapshot_date,
         label=label,
-        trigger=SnapshotTrigger.manual,
+        trigger=trigger,
         status=SnapshotStatus.pending,
     )
     session.add(snapshot)

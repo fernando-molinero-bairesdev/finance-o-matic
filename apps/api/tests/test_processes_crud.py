@@ -365,3 +365,54 @@ async def test_delete_process_not_found_returns_404(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 404
+
+
+# ── LIFECYCLE SYNC ─────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_update_cadence_recalculates_next_run_at(
+    client: AsyncClient, seeded_currencies
+) -> None:
+    _, token = await _register_and_login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    create = await client.post(
+        "/api/v1/processes",
+        json={"name": "P", "cadence": "monthly", "concept_scope": "all"},
+        headers=headers,
+    )
+    pid = create.json()["id"]
+    original_next = create.json()["schedule"]["next_run_at"]
+
+    # Change cadence to weekly — next_run_at should be recalculated from today
+    resp = await client.put(
+        f"/api/v1/processes/{pid}", json={"cadence": "weekly"}, headers=headers
+    )
+    assert resp.status_code == 200
+    new_next = resp.json()["schedule"]["next_run_at"]
+    assert new_next != original_next
+    assert resp.json()["cadence"] == "weekly"
+
+
+@pytest.mark.asyncio
+async def test_reactivate_process_recalculates_next_run_at(
+    client: AsyncClient, seeded_currencies
+) -> None:
+    _, token = await _register_and_login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    create = await client.post(
+        "/api/v1/processes",
+        json={"name": "P2", "cadence": "monthly", "concept_scope": "all"},
+        headers=headers,
+    )
+    pid = create.json()["id"]
+
+    # Deactivate
+    await client.put(f"/api/v1/processes/{pid}", json={"is_active": False}, headers=headers)
+
+    # Reactivate — next_run_at should be freshly set from today
+    resp = await client.put(
+        f"/api/v1/processes/{pid}", json={"is_active": True}, headers=headers
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_active"] is True
+    assert resp.json()["schedule"]["next_run_at"] is not None

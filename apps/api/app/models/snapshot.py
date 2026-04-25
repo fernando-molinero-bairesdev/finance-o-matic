@@ -18,6 +18,7 @@ class SnapshotStatus(str, enum.Enum):
 
 class SnapshotTrigger(str, enum.Enum):
     manual = "manual"
+    scheduled = "scheduled"
 
 
 class Snapshot(Base):
