@@ -8,6 +8,7 @@ import {
 } from '../../lib/processesApi'
 import type { ProcessRead } from '../../lib/processesApi'
 import ProcessForm from './ProcessForm'
+import Button from '../../components/ui/Button'
 
 export default function ProcessList() {
   const qc = useQueryClient()
@@ -35,9 +36,9 @@ export default function ProcessList() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['snapshots'] }),
   })
 
-  if (isLoading) return <p>Loading processes...</p>
-  if (isError) return <p>Error loading processes.</p>
-  if (!data?.length) return <p>No processes yet.</p>
+  if (isLoading) return <p className="text-sm text-[var(--text)]">Loading processes...</p>
+  if (isError) return <p className="text-sm text-red-500">Error loading processes.</p>
+  if (!data?.length) return <p className="text-sm text-[var(--text)]">No processes yet.</p>
 
   if (editingProcess) {
     return (
@@ -50,44 +51,68 @@ export default function ProcessList() {
   }
 
   return (
-    <ul>
+    <ul className="divide-y divide-[var(--border)] -mx-4">
       {data.map((p) => (
-        <li key={p.id}>
-          <span>{p.name}</span>
-          <span> ({p.cadence})</span>
-          <span>
-            {p.concept_scope === 'all'
-              ? ' · all concepts'
-              : ` · ${p.selected_concept_ids.length} concepts`}
-          </span>
-          {!p.is_active && <span> [inactive]</span>}
-          {p.schedule?.next_run_at && (
-            <span> — next: {p.schedule.next_run_at}</span>
-          )}
-          <button
-            aria-label={`Edit ${p.name}`}
-            onClick={() => setEditingProcess(p)}
-          >
-            Edit
-          </button>
-          <button
-            aria-label={`Toggle active ${p.name}`}
-            onClick={() => toggleActiveMutation.mutate({ id: p.id, is_active: !p.is_active })}
-          >
-            {p.is_active ? 'Deactivate' : 'Activate'}
-          </button>
-          <button
-            aria-label={`Take snapshot ${p.name}`}
-            onClick={() => snapshotMutation.mutate(p.id)}
-          >
-            Take Snapshot
-          </button>
-          <button
-            aria-label={`Delete ${p.name}`}
-            onClick={() => deleteMutation.mutate(p.id)}
-          >
-            Delete
-          </button>
+        <li key={p.id} className="px-4 py-3 space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-medium text-[var(--text-h)]">{p.name}</span>
+                <span className="text-xs text-[var(--text)]">({p.cadence})</span>
+                {!p.is_active && (
+                  <span className="text-xs text-[var(--text)] bg-[var(--code-bg)] rounded-full px-2 py-0.5">
+                    inactive
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="text-xs text-[var(--text)]">
+                  {p.concept_scope === 'all'
+                    ? 'all concepts'
+                    : `${p.selected_concept_ids.length} concepts`}
+                </span>
+                {p.schedule?.next_run_at && (
+                  <span className="text-xs text-[var(--text)]">
+                    · next: {p.schedule.next_run_at}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Edit ${p.name}`}
+              onClick={() => setEditingProcess(p)}
+            >
+              Edit
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Toggle active ${p.name}`}
+              onClick={() => toggleActiveMutation.mutate({ id: p.id, is_active: !p.is_active })}
+            >
+              {p.is_active ? 'Deactivate' : 'Activate'}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-label={`Take snapshot ${p.name}`}
+              onClick={() => snapshotMutation.mutate(p.id)}
+            >
+              Take Snapshot
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              aria-label={`Delete ${p.name}`}
+              onClick={() => deleteMutation.mutate(p.id)}
+            >
+              Delete
+            </Button>
+          </div>
         </li>
       ))}
     </ul>

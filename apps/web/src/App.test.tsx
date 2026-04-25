@@ -22,6 +22,6 @@ describe('App default route', () => {
         </AuthContext.Provider>
       </MemoryRouter>,
     )
-    expect(screen.getByRole('heading', { name: /sign in/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /finance-o-matic/i })).toBeInTheDocument()
   })
 })

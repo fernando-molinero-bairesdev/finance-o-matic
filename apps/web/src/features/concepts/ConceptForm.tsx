@@ -3,12 +3,15 @@ import { useState } from 'react'
 import { ApiError } from '../../lib/apiClient'
 import { createConcept, getCurrencies } from '../../lib/conceptsApi'
 import type { ConceptCreate, ConceptKind } from '../../lib/conceptsApi'
+import Button from '../../components/ui/Button'
+import FormField, { inputClass, selectClass } from '../../components/ui/FormField'
 
 interface Props {
   onSuccess: () => void
+  onCancel?: () => void
 }
 
-export default function ConceptForm({ onSuccess }: Props) {
+export default function ConceptForm({ onSuccess, onCancel }: Props) {
   const qc = useQueryClient()
   const [name, setName] = useState('')
   const [kind, setKind] = useState<ConceptKind>('value')
@@ -51,42 +54,46 @@ export default function ConceptForm({ onSuccess }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      {error && <p role="alert">{error}</p>}
+    <form onSubmit={handleSubmit} className="space-y-3">
+      {error && (
+        <p role="alert" className="text-sm text-red-500 bg-red-50 dark:bg-red-950/30 rounded-lg px-3 py-2">
+          {error}
+        </p>
+      )}
 
-      <label>
-        Name
+      <FormField id="concept-name" label="Name">
         <input
           id="concept-name"
           aria-label="Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
+          className={inputClass}
         />
-      </label>
+      </FormField>
 
-      <label>
-        Kind
+      <FormField id="concept-kind" label="Kind">
         <select
           id="concept-kind"
           aria-label="Kind"
           value={kind}
           onChange={(e) => setKind(e.target.value as ConceptKind)}
+          className={selectClass}
         >
           <option value="value">Value</option>
           <option value="formula">Formula</option>
           <option value="group">Group</option>
           <option value="aux">Aux</option>
         </select>
-      </label>
+      </FormField>
 
-      <label>
-        Currency
+      <FormField id="concept-currency" label="Currency">
         <select
           id="concept-currency"
           aria-label="Currency"
           value={currencyCode}
           onChange={(e) => setCurrencyCode(e.target.value)}
+          className={selectClass}
         >
           <option value="">-- select --</option>
           {currencies?.map((c) => (
@@ -95,36 +102,43 @@ export default function ConceptForm({ onSuccess }: Props) {
             </option>
           ))}
         </select>
-      </label>
+      </FormField>
 
       {kind === 'value' && (
-        <label>
-          Literal Value
+        <FormField id="concept-literal-value" label="Literal Value">
           <input
             id="concept-literal-value"
             aria-label="Literal Value"
             type="number"
             value={literalValue}
             onChange={(e) => setLiteralValue(e.target.value)}
+            className={inputClass}
           />
-        </label>
+        </FormField>
       )}
 
       {(kind === 'formula' || kind === 'aux') && (
-        <label>
-          Expression
+        <FormField id="concept-expression" label="Expression">
           <input
             id="concept-expression"
             aria-label="Expression"
             value={expression}
             onChange={(e) => setExpression(e.target.value)}
+            className={inputClass}
           />
-        </label>
+        </FormField>
       )}
 
-      <button type="submit" disabled={mutation.isPending}>
-        {mutation.isPending ? 'Creating...' : 'Create'}
-      </button>
+      <div className="flex gap-2 pt-1">
+        <Button type="submit" variant="primary" size="sm" disabled={mutation.isPending}>
+          {mutation.isPending ? 'Creating...' : 'Create'}
+        </Button>
+        {onCancel && (
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+        )}
+      </div>
     </form>
   )
 }

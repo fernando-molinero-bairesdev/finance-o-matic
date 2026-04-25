@@ -29,7 +29,9 @@
       "Bash(pip install *)",
       "Bash(python -c \"import apscheduler; print\\(apscheduler.__version__\\)\")",
       "Bash(python -m pytest tests/test_scheduled_jobs.py tests/test_fx_service.py tests/test_processes_crud.py -v)",
-      "Bash(python -m pytest -v)"
+      "Bash(python -m pytest -v)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm exec *)"
     ]
   }
 }
