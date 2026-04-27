@@ -29,3 +29,8 @@ class ConceptEntry(Base):
     )
     formula_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_pending: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )

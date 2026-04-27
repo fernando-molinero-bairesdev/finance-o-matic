@@ -1,23 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../../lib/apiClient'
-import { createConcept, getCurrencies } from '../../lib/conceptsApi'
-import type { ConceptCreate, ConceptKind } from '../../lib/conceptsApi'
+import { createConcept, updateConcept, getCurrencies } from '../../lib/conceptsApi'
+import type { ConceptCreate, ConceptUpdate, ConceptKind, ConceptRead } from '../../lib/conceptsApi'
 import Button from '../../components/ui/Button'
 import FormField, { inputClass, selectClass } from '../../components/ui/FormField'
 
 interface Props {
+  concept?: ConceptRead
   onSuccess: () => void
   onCancel?: () => void
 }
 
-export default function ConceptForm({ onSuccess, onCancel }: Props) {
+export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
+  const isEditing = !!concept
   const qc = useQueryClient()
-  const [name, setName] = useState('')
-  const [kind, setKind] = useState<ConceptKind>('value')
-  const [currencyCode, setCurrencyCode] = useState('')
-  const [literalValue, setLiteralValue] = useState('')
-  const [expression, setExpression] = useState('')
+  const [name, setName] = useState(concept?.name ?? '')
+  const [kind, setKind] = useState<ConceptKind>(concept?.kind ?? 'value')
+  const [currencyCode, setCurrencyCode] = useState(concept?.currency_code ?? '')
+  const [literalValue, setLiteralValue] = useState(
+    concept?.literal_value !== null && concept?.literal_value !== undefined
+      ? String(concept.literal_value)
+      : '',
+  )
+  const [expression, setExpression] = useState(concept?.expression ?? '')
   const [error, setError] = useState<string | null>(null)
 
   const { data: currencies } = useQuery({
@@ -26,7 +32,8 @@ export default function ConceptForm({ onSuccess, onCancel }: Props) {
   })
 
   const mutation = useMutation({
-    mutationFn: (body: ConceptCreate) => createConcept(body),
+    mutationFn: (body: ConceptCreate | ConceptUpdate) =>
+      isEditing ? updateConcept(concept.id, body as ConceptUpdate) : createConcept(body as ConceptCreate),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['concepts'] })
       onSuccess()
@@ -43,9 +50,9 @@ export default function ConceptForm({ onSuccess, onCancel }: Props) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    const body: ConceptCreate = {
+    const body: ConceptCreate | ConceptUpdate = {
       name,
-      kind,
+      ...(isEditing ? {} : { kind }),
       currency_code: currencyCode,
       ...(kind === 'value' && literalValue !== '' ? { literal_value: parseFloat(literalValue) } : {}),
       ...(kind === 'formula' || kind === 'aux' ? { expression } : {}),
@@ -78,6 +85,7 @@ export default function ConceptForm({ onSuccess, onCancel }: Props) {
           aria-label="Kind"
           value={kind}
           onChange={(e) => setKind(e.target.value as ConceptKind)}
+          disabled={isEditing}
           className={selectClass}
         >
           <option value="value">Value</option>
@@ -131,7 +139,7 @@ export default function ConceptForm({ onSuccess, onCancel }: Props) {
 
       <div className="flex gap-2 pt-1">
         <Button type="submit" variant="primary" size="sm" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Creating...' : 'Create'}
+          {mutation.isPending ? (isEditing ? 'Saving…' : 'Creating…') : (isEditing ? 'Save' : 'Create')}
         </Button>
         {onCancel && (
           <Button type="button" variant="ghost" size="sm" onClick={onCancel}>

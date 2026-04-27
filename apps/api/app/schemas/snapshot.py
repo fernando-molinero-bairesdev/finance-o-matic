@@ -23,10 +23,12 @@ class ConceptEntryRead(BaseModel):
     carry_behaviour_used: ConceptCarryBehaviour
     formula_snapshot: str | None
     is_pending: bool
+    entity_id: uuid.UUID | None
 
 
 class ConceptEntryResolve(BaseModel):
     value: float
+    entity_id: uuid.UUID | None = None
 
 
 class SnapshotRead(BaseModel):

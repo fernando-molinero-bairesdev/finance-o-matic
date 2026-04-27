@@ -1,8 +1,7 @@
-"""Concept initialization endpoint.
+"""Initialization endpoints.
 
-POST /api/v1/init/concepts
-Creates a standard set of starter concepts for a new user.
-Idempotent: already-existing concept names are skipped.
+POST /api/v1/init/concepts      — starter concepts (idempotent)
+POST /api/v1/init/entity-types  — starter entity types (idempotent)
 """
 from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel
@@ -12,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.users import current_active_user
 from app.core.db import get_async_session
 from app.models.concept import Concept, ConceptCarryBehaviour, ConceptKind
+from app.models.entity_property_def import EntityPropertyCardinality, EntityPropertyDef, EntityPropertyType
+from app.models.entity_type import EntityType
 from app.models.user import User
 from app.schemas.concept import ConceptRead
 
@@ -138,3 +139,99 @@ async def init_concepts(
         created=[ConceptRead.model_validate(c) for c in created],
         skipped=all_skipped,
     )
+
+
+# ── Entity-type seed ──────────────────────────────────────────────────────────
+
+_T = EntityPropertyType
+_C = EntityPropertyCardinality
+
+_ENTITY_TYPE_SEED: list[dict] = [
+    {
+        "name": "Asset",
+        "properties": [
+            {"name": "description", "value_type": _T.string, "cardinality": _C.one, "nullable": True, "display_order": 0},
+            {"name": "acquisition_date", "value_type": _T.date, "cardinality": _C.one, "nullable": True, "display_order": 1},
+            {"name": "purchase_price", "value_type": _T.decimal, "cardinality": _C.one, "nullable": True, "display_order": 2},
+        ],
+    },
+    {
+        "name": "Account",
+        "properties": [
+            {"name": "institution", "value_type": _T.string, "cardinality": _C.one, "nullable": False, "display_order": 0},
+            {"name": "account_type", "value_type": _T.string, "cardinality": _C.one, "nullable": True, "display_order": 1},
+        ],
+    },
+    {
+        "name": "Loan",
+        "properties": [
+            {"name": "apr", "value_type": _T.decimal, "cardinality": _C.one, "nullable": False, "display_order": 0},
+            {"name": "payment_count", "value_type": _T.decimal, "cardinality": _C.one, "nullable": True, "display_order": 1},
+            {"name": "start_date", "value_type": _T.date, "cardinality": _C.one, "nullable": True, "display_order": 2},
+            # ref_entity_type resolved at runtime:
+            {"name": "collateral", "value_type": _T.entity_ref, "ref_entity_type": "Asset", "cardinality": _C.one, "nullable": True, "display_order": 3},
+        ],
+    },
+    {
+        "name": "Investment",
+        "properties": [
+            {"name": "ticker", "value_type": _T.string, "cardinality": _C.one, "nullable": True, "display_order": 0},
+            {"name": "shares", "value_type": _T.decimal, "cardinality": _C.one, "nullable": True, "display_order": 1},
+            # ref_entity_type resolved at runtime:
+            {"name": "broker", "value_type": _T.entity_ref, "ref_entity_type": "Account", "cardinality": _C.one, "nullable": True, "display_order": 2},
+        ],
+    },
+]
+
+
+class EntityTypeInitResponse(BaseModel):
+    created: list[str]
+    skipped: list[str]
+
+
+@router.post(
+    "/entity-types",
+    response_model=EntityTypeInitResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def init_entity_types(
+    response: Response,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> EntityTypeInitResponse:
+    existing_result = await session.execute(
+        select(EntityType).where(EntityType.user_id == current_user.id)
+    )
+    existing: dict[str, EntityType] = {et.name: et for et in existing_result.scalars().all()}
+
+    created: list[str] = []
+    skipped: list[str] = []
+    created_by_name: dict[str, EntityType] = dict(existing)
+
+    for seed in _ENTITY_TYPE_SEED:
+        type_name: str = seed["name"]
+        if type_name in existing:
+            skipped.append(type_name)
+            continue
+
+        et = EntityType(user_id=current_user.id, name=type_name)
+        session.add(et)
+        await session.flush()
+
+        for prop_def in seed["properties"]:
+            kwargs = {k: v for k, v in prop_def.items() if k != "ref_entity_type"}
+            ref_type_name: str | None = prop_def.get("ref_entity_type")
+            if ref_type_name is not None:
+                ref_et = created_by_name.get(ref_type_name)
+                kwargs["ref_entity_type_id"] = ref_et.id if ref_et else None
+            session.add(EntityPropertyDef(entity_type_id=et.id, **kwargs))
+
+        created_by_name[type_name] = et
+        created.append(type_name)
+
+    await session.commit()
+
+    if not created:
+        response.status_code = status.HTTP_200_OK
+
+    return EntityTypeInitResponse(created=created, skipped=skipped)

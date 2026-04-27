@@ -1,8 +1,8 @@
 import { apiFetch } from './apiClient'
 import type { CarryBehaviour } from './conceptsApi'
 
-export type SnapshotStatus = 'pending' | 'complete' | 'failed'
-export type SnapshotTrigger = 'manual'
+export type SnapshotStatus = 'open' | 'processed' | 'complete' | 'pending' | 'failed'
+export type SnapshotTrigger = 'manual' | 'scheduled'
 
 export interface ConceptEntryRead {
   id: string
@@ -13,6 +13,7 @@ export interface ConceptEntryRead {
   carry_behaviour_used: CarryBehaviour
   formula_snapshot: string | null
   is_pending: boolean
+  entity_id: string | null
 }
 
 export interface SnapshotRead {
@@ -49,16 +50,28 @@ export async function getSnapshot(id: string): Promise<SnapshotDetail> {
   return apiFetch<SnapshotDetail>(`/api/v1/snapshots/${id}`)
 }
 
-export async function resolveEntry(
+export async function processSnapshot(id: string): Promise<SnapshotDetail> {
+  return apiFetch<SnapshotDetail>(`/api/v1/snapshots/${id}/process`, { method: 'POST' })
+}
+
+export async function completeSnapshot(id: string): Promise<SnapshotRead> {
+  return apiFetch<SnapshotRead>(`/api/v1/snapshots/${id}/complete`, { method: 'POST' })
+}
+
+export async function updateEntry(
   snapshotId: string,
   entryId: string,
   value: number,
+  entityId?: string | null,
 ): Promise<ConceptEntryRead> {
   return apiFetch<ConceptEntryRead>(
     `/api/v1/snapshots/${snapshotId}/entries/${entryId}`,
     {
       method: 'PATCH',
-      body: JSON.stringify({ value }),
+      body: JSON.stringify({ value, entity_id: entityId ?? null }),
     },
   )
 }
+
+/** @deprecated use updateEntry */
+export const resolveEntry = updateEntry

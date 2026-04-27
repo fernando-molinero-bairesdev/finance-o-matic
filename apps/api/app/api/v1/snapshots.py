@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.users import current_active_user
 from app.core.db import get_async_session
 from app.models.concept_entry import ConceptEntry
+from app.models.entity import Entity
 from app.models.snapshot import Snapshot, SnapshotStatus
 from app.models.user import User
 from app.schemas.snapshot import (
@@ -17,7 +18,7 @@ from app.schemas.snapshot import (
     SnapshotListResponse,
     SnapshotRead,
 )
-from app.services.snapshot import take_snapshot
+from app.services.snapshot import process_snapshot, take_snapshot
 
 router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 
@@ -34,6 +35,17 @@ async def _get_owned_snapshot_or_404(
     return snapshot
 
 
+async def _load_detail(session: AsyncSession, snapshot: Snapshot) -> SnapshotDetail:
+    entries_result = await session.execute(
+        select(ConceptEntry).where(ConceptEntry.snapshot_id == snapshot.id)
+    )
+    entries = list(entries_result.scalars().all())
+    return SnapshotDetail(
+        **SnapshotRead.model_validate(snapshot).model_dump(),
+        entries=[ConceptEntryRead.model_validate(e) for e in entries],
+    )
+
+
 @router.post("", response_model=SnapshotDetail, status_code=status.HTTP_201_CREATED)
 async def create_snapshot(
     body: SnapshotCreate,
@@ -46,14 +58,7 @@ async def create_snapshot(
         snapshot_date=body.date,
         label=body.label,
     )
-    entries_result = await session.execute(
-        select(ConceptEntry).where(ConceptEntry.snapshot_id == snapshot.id)
-    )
-    entries = list(entries_result.scalars().all())
-    return SnapshotDetail(
-        **SnapshotRead.model_validate(snapshot).model_dump(),
-        entries=[ConceptEntryRead.model_validate(e) for e in entries],
-    )
+    return await _load_detail(session, snapshot)
 
 
 @router.get("", response_model=SnapshotListResponse)
@@ -76,21 +81,48 @@ async def get_snapshot(
     session: AsyncSession = Depends(get_async_session),
 ) -> SnapshotDetail:
     snapshot = await _get_owned_snapshot_or_404(session, snapshot_id, current_user.id)
-    entries_result = await session.execute(
-        select(ConceptEntry).where(ConceptEntry.snapshot_id == snapshot.id)
-    )
-    entries = list(entries_result.scalars().all())
-    return SnapshotDetail(
-        **SnapshotRead.model_validate(snapshot).model_dump(),
-        entries=[ConceptEntryRead.model_validate(e) for e in entries],
-    )
+    return await _load_detail(session, snapshot)
+
+
+@router.post("/{snapshot_id}/process", response_model=SnapshotDetail)
+async def process_snapshot_endpoint(
+    snapshot_id: uuid.UUID,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> SnapshotDetail:
+    snapshot = await _get_owned_snapshot_or_404(session, snapshot_id, current_user.id)
+    if snapshot.status not in (SnapshotStatus.open, SnapshotStatus.processed):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only open or processed snapshots can be re-processed.",
+        )
+    snapshot = await process_snapshot(session=session, snapshot=snapshot, user_id=current_user.id)
+    return await _load_detail(session, snapshot)
+
+
+@router.post("/{snapshot_id}/complete", response_model=SnapshotRead)
+async def complete_snapshot(
+    snapshot_id: uuid.UUID,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> SnapshotRead:
+    snapshot = await _get_owned_snapshot_or_404(session, snapshot_id, current_user.id)
+    if snapshot.status != SnapshotStatus.processed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only processed snapshots can be completed.",
+        )
+    snapshot.status = SnapshotStatus.complete
+    await session.commit()
+    await session.refresh(snapshot)
+    return SnapshotRead.model_validate(snapshot)
 
 
 @router.patch(
     "/{snapshot_id}/entries/{entry_id}",
     response_model=ConceptEntryRead,
 )
-async def resolve_entry(
+async def update_entry(
     snapshot_id: uuid.UUID,
     entry_id: uuid.UUID,
     body: ConceptEntryResolve,
@@ -98,6 +130,11 @@ async def resolve_entry(
     session: AsyncSession = Depends(get_async_session),
 ) -> ConceptEntryRead:
     snapshot = await _get_owned_snapshot_or_404(session, snapshot_id, current_user.id)
+    if snapshot.status == SnapshotStatus.complete:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot edit entries of a completed snapshot.",
+        )
 
     entry_result = await session.execute(
         select(ConceptEntry).where(
@@ -108,20 +145,25 @@ async def resolve_entry(
     entry = entry_result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+
     entry.value = body.value
     entry.is_pending = False
 
-    # Update snapshot status if all entries are now resolved
-    pending_result = await session.execute(
-        select(ConceptEntry).where(
-            ConceptEntry.snapshot_id == snapshot.id,
-            ConceptEntry.is_pending.is_(True),
-            ConceptEntry.id != entry.id,
+    if body.entity_id is not None:
+        # Validate the entity belongs to the same user
+        entity_result = await session.execute(
+            select(Entity).where(
+                Entity.id == body.entity_id, Entity.user_id == current_user.id
+            )
         )
-    )
-    remaining_pending = pending_result.scalars().first()
-    if remaining_pending is None:
-        snapshot.status = SnapshotStatus.complete
+        if entity_result.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Entity not found.",
+            )
+        entry.entity_id = body.entity_id
+    else:
+        entry.entity_id = None
 
     await session.commit()
     await session.refresh(entry)

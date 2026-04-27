@@ -1,3 +1,4 @@
+import types
 import uuid
 from datetime import date
 
@@ -15,14 +16,14 @@ async def _get_prior_entry(
     user_id: uuid.UUID,
     concept_id: uuid.UUID,
 ) -> ConceptEntry | None:
-    """Return the most recent non-pending ConceptEntry for this concept."""
+    """Return the most recent resolved ConceptEntry from a complete snapshot."""
     result = await session.execute(
         select(ConceptEntry)
         .join(Snapshot, ConceptEntry.snapshot_id == Snapshot.id)
         .where(
             Snapshot.user_id == user_id,
             ConceptEntry.concept_id == concept_id,
-            ConceptEntry.is_pending.is_(False),
+            Snapshot.status == SnapshotStatus.complete,
         )
         .order_by(Snapshot.date.desc(), Snapshot.id.desc())
         .limit(1)
@@ -51,43 +52,26 @@ async def take_snapshot(
         date=snapshot_date,
         label=label,
         trigger=trigger,
-        status=SnapshotStatus.pending,
+        status=SnapshotStatus.open,
     )
     session.add(snapshot)
-    await session.flush()  # get snapshot.id
+    await session.flush()
 
-    any_pending = False
     entries: list[ConceptEntry] = []
 
     for concept in concepts:
         behaviour = concept.carry_behaviour
         value: float | None = None
-        is_pending = False
-        formula_snapshot: str | None = None
 
         if behaviour == ConceptCarryBehaviour.auto:
-            try:
-                value = evaluate_concept_by_id(concept.id, concepts)
-            except FormulaEvaluationError:
-                value = None
-            formula_snapshot = concept.expression
+            # Auto concepts are evaluated later when the user processes the snapshot.
+            # Leave value as None until then.
+            pass
 
-        elif behaviour == ConceptCarryBehaviour.copy:
+        elif behaviour in (ConceptCarryBehaviour.copy, ConceptCarryBehaviour.copy_or_manual):
             prior = await _get_prior_entry(session, user_id, concept.id)
             if prior is not None:
                 value = prior.value
-            else:
-                # No prior entry — treat as pending so user can supply the first value
-                is_pending = True
-                any_pending = True
-
-        elif behaviour == ConceptCarryBehaviour.copy_or_manual:
-            prior = await _get_prior_entry(session, user_id, concept.id)
-            if prior is not None:
-                value = prior.value
-            else:
-                is_pending = True
-                any_pending = True
 
         entries.append(
             ConceptEntry(
@@ -96,14 +80,80 @@ async def take_snapshot(
                 value=value,
                 currency_code=concept.currency_code,
                 carry_behaviour_used=behaviour,
-                formula_snapshot=formula_snapshot,
-                is_pending=is_pending,
+                formula_snapshot=None,
+                is_pending=False,
             )
         )
 
     session.add_all(entries)
+    await session.commit()
+    await session.refresh(snapshot)
+    return snapshot
 
-    snapshot.status = SnapshotStatus.pending if any_pending else SnapshotStatus.complete
+
+async def process_snapshot(
+    session: AsyncSession,
+    snapshot: Snapshot,
+    user_id: uuid.UUID,
+) -> Snapshot:
+    """Run formula engine on all auto entries, transition snapshot to processed."""
+    if snapshot.status not in (SnapshotStatus.open, SnapshotStatus.processed):
+        raise ValueError(f"Cannot process snapshot in status '{snapshot.status}'")
+
+    # Load ALL user concepts for formula evaluation (not just scoped ones)
+    all_concepts_result = await session.execute(
+        select(Concept).where(Concept.user_id == user_id)
+    )
+    all_concepts = list(all_concepts_result.scalars().all())
+
+    # Load the snapshot's entries
+    entries_result = await session.execute(
+        select(ConceptEntry).where(ConceptEntry.snapshot_id == snapshot.id)
+    )
+    entries = list(entries_result.scalars().all())
+
+    concept_map = {c.id: c for c in all_concepts}
+
+    # Build a map of concept_id → value from the snapshot's non-auto entries.
+    # The formula engine uses concept.literal_value for ConceptKind.value nodes, but
+    # the user fills values into snapshot entries (not the concept itself). We create
+    # lightweight proxy objects that override literal_value so the engine sees the
+    # snapshot-specific values instead of the global concept definition.
+    entry_value_map: dict[uuid.UUID, float] = {
+        e.concept_id: e.value
+        for e in entries
+        if e.carry_behaviour_used != ConceptCarryBehaviour.auto and e.value is not None
+    }
+
+    def _patched_concepts() -> list:
+        patched = []
+        for c in all_concepts:
+            entry_val = entry_value_map.get(c.id)
+            if entry_val is not None and c.kind == ConceptKind.value:
+                patched.append(types.SimpleNamespace(
+                    id=c.id,
+                    name=c.name,
+                    kind=c.kind,
+                    literal_value=entry_val,
+                    expression=c.expression,
+                    parent_group_id=c.parent_group_id,
+                    aggregate_op=c.aggregate_op,
+                ))
+            else:
+                patched.append(c)
+        return patched
+
+    for entry in entries:
+        if entry.carry_behaviour_used == ConceptCarryBehaviour.auto:
+            try:
+                entry.value = evaluate_concept_by_id(entry.concept_id, _patched_concepts())
+            except FormulaEvaluationError:
+                entry.value = None
+            concept = concept_map.get(entry.concept_id)
+            if concept:
+                entry.formula_snapshot = concept.expression
+
+    snapshot.status = SnapshotStatus.processed
     await session.commit()
     await session.refresh(snapshot)
     return snapshot

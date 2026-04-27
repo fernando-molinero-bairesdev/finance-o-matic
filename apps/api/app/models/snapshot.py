@@ -11,9 +11,11 @@ from app.core.db import Base
 
 
 class SnapshotStatus(str, enum.Enum):
-    pending = "pending"
+    open = "open"
+    processed = "processed"
     complete = "complete"
-    failed = "failed"
+    pending = "pending"    # legacy
+    failed = "failed"      # legacy
 
 
 class SnapshotTrigger(str, enum.Enum):
@@ -43,5 +45,5 @@ class Snapshot(Base):
     status: Mapped[SnapshotStatus] = mapped_column(
         SQLEnum(SnapshotStatus, name="snapshotstatus"),
         nullable=False,
-        default=SnapshotStatus.pending,
+        default=SnapshotStatus.open,
     )
