@@ -162,8 +162,7 @@ async def update_entry(
                 detail="Entity not found.",
             )
         entry.entity_id = body.entity_id
-    else:
-        entry.entity_id = None
+    # else: leave entry.entity_id unchanged; entity_id is managed by take_snapshot
 
     await session.commit()
     await session.refresh(entry)

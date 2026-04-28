@@ -54,7 +54,7 @@ describe('getConcepts', () => {
 
 describe('createConcept', () => {
   it('calls POST /api/v1/concepts with body', async () => {
-    const concept = { id: '1', name: 'salary', kind: 'value' as const, currency_code: 'USD', carry_behaviour: 'copy_or_manual' as const, literal_value: 5000, expression: null, parent_group_id: null, aggregate_op: null, user_id: 'u1' }
+    const concept = { id: '1', name: 'salary', kind: 'value' as const, currency_code: 'USD', carry_behaviour: 'copy_or_manual' as const, literal_value: 5000, expression: null, group_ids: [], aggregate_op: null, user_id: 'u1' }
     vi.stubGlobal('fetch', mockFetch(concept, true, 201))
     await createConcept({ name: 'salary', kind: 'value', currency_code: 'USD', literal_value: 5000 })
     expect(fetch).toHaveBeenCalledWith(

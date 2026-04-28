@@ -150,7 +150,7 @@ async def test_init_loan_payment_is_child_of_loans(
     created = resp.json()["created"]
     loans = next(c for c in created if c["name"] == "loans")
     payment = next(c for c in created if c["name"] == "loan_payment")
-    assert payment["parent_group_id"] == loans["id"]
+    assert loans["id"] in payment["group_ids"]
 
 
 @pytest.mark.asyncio

@@ -71,8 +71,8 @@ const processFixture: ProcessRead = {
 }
 
 const conceptsFixture: ConceptRead[] = [
-  { id: 'c1', name: 'Rent', kind: 'value', user_id: 'u1', currency_code: 'USD', carry_behaviour: 'copy_or_manual', literal_value: null, expression: null, parent_group_id: null, aggregate_op: null },
-  { id: 'c2', name: 'Salary', kind: 'value', user_id: 'u1', currency_code: 'USD', carry_behaviour: 'auto', literal_value: null, expression: null, parent_group_id: null, aggregate_op: null },
+  { id: 'c1', name: 'Rent', kind: 'value', user_id: 'u1', currency_code: 'USD', carry_behaviour: 'copy_or_manual', literal_value: null, expression: null, group_ids: [], aggregate_op: null },
+  { id: 'c2', name: 'Salary', kind: 'value', user_id: 'u1', currency_code: 'USD', carry_behaviour: 'auto', literal_value: null, expression: null, group_ids: [], aggregate_op: null },
 ]
 
 beforeEach(() => vi.resetAllMocks())

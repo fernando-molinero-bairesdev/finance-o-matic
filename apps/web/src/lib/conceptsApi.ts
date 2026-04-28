@@ -1,4 +1,6 @@
 import { apiFetch } from './apiClient'
+export type { CurrencyRead } from './currenciesApi'
+export { getCurrencies } from './currenciesApi'
 
 export type ConceptKind = 'value' | 'formula' | 'group' | 'aux'
 export type CarryBehaviour = 'auto' | 'copy' | 'copy_or_manual'
@@ -12,8 +14,9 @@ export interface ConceptRead {
   carry_behaviour: CarryBehaviour
   literal_value: number | null
   expression: string | null
-  parent_group_id: string | null
+  group_ids: string[]
   aggregate_op: string | null
+  entity_type_id?: string | null
 }
 
 export interface ConceptCreate {
@@ -23,8 +26,9 @@ export interface ConceptCreate {
   carry_behaviour?: CarryBehaviour
   literal_value?: number | null
   expression?: string | null
-  parent_group_id?: string | null
+  group_ids?: string[]
   aggregate_op?: string | null
+  entity_type_id?: string | null
 }
 
 export interface ConceptUpdate {
@@ -34,13 +38,9 @@ export interface ConceptUpdate {
   carry_behaviour?: CarryBehaviour
   literal_value?: number | null
   expression?: string | null
-  parent_group_id?: string | null
+  group_ids?: string[] | null
   aggregate_op?: string | null
-}
-
-export interface CurrencyRead {
-  code: string
-  name: string
+  entity_type_id?: string | null
 }
 
 export async function getConcepts(): Promise<ConceptRead[]> {
@@ -64,11 +64,6 @@ export async function updateConcept(id: string, body: ConceptUpdate): Promise<Co
 
 export async function deleteConcept(id: string): Promise<void> {
   await apiFetch<void>(`/api/v1/concepts/${id}`, { method: 'DELETE' })
-}
-
-export async function getCurrencies(): Promise<CurrencyRead[]> {
-  const res = await apiFetch<{ items: CurrencyRead[] }>('/api/v1/currencies')
-  return res.items
 }
 
 export interface ConceptInitResponse {

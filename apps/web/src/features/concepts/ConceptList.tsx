@@ -28,6 +28,8 @@ export default function ConceptList() {
     </div>
   )
 
+  const conceptsById = Object.fromEntries(data.map((c) => [c.id, c]))
+
   return (
     <ul className="divide-y divide-[var(--border)] -mx-4">
       {data.map((c) => (
@@ -42,9 +44,26 @@ export default function ConceptList() {
             </div>
           ) : (
             <div className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm font-medium text-[var(--text-h)] truncate">{c.name}</span>
-                <span className="text-xs text-[var(--text)] shrink-0">({c.kind})</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-[var(--text-h)] truncate">{c.name}</span>
+                  <span className="text-xs text-[var(--text)] shrink-0">({c.kind})</span>
+                </div>
+                {c.group_ids.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {c.group_ids.map((gid) => {
+                      const group = conceptsById[gid]
+                      return group ? (
+                        <span
+                          key={gid}
+                          className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-[var(--accent)]/10 text-[var(--accent)]"
+                        >
+                          {group.name}
+                        </span>
+                      ) : null
+                    })}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <Button

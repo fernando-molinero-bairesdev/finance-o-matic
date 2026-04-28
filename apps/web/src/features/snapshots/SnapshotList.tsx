@@ -10,9 +10,10 @@ import {
 } from '../../lib/snapshotsApi'
 import type { ConceptEntryRead, SnapshotStatus } from '../../lib/snapshotsApi'
 import { getEntities } from '../../lib/entitiesApi'
+import type { EntityRead } from '../../lib/entitiesApi'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
-import { inputClass, selectClass } from '../../components/ui/FormField'
+import { inputClass } from '../../components/ui/FormField'
 
 function statusVariant(s: SnapshotStatus) {
   if (s === 'complete') return 'success'
@@ -29,29 +30,25 @@ interface EntryRowProps {
   snapshotId: string
   snapshotStatus: SnapshotStatus
   conceptNames: Record<string, string>
+  entityNames: Record<string, string>
 }
 
-function EntryRow({ entry, snapshotId, snapshotStatus, conceptNames }: EntryRowProps) {
+function EntryRow({ entry, snapshotId, snapshotStatus, conceptNames, entityNames }: EntryRowProps) {
   const qc = useQueryClient()
   const [localValue, setLocalValue] = useState(
     entry.value !== null ? String(entry.value) : '',
   )
-  const [localEntityId, setLocalEntityId] = useState<string>(entry.entity_id ?? '')
-
-  const { data: entities } = useQuery({
-    queryKey: ['entities'],
-    queryFn: () => getEntities(),
-  })
 
   const saveMutation = useMutation({
-    mutationFn: ({ val, entityId }: { val: number; entityId: string | null }) =>
-      updateEntry(snapshotId, entry.id, val, entityId),
+    mutationFn: (val: number) =>
+      updateEntry(snapshotId, entry.id, val, entry.entity_id ?? null),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['snapshot', snapshotId] })
     },
   })
 
   const conceptName = conceptNames[entry.concept_id] ?? entry.concept_id.slice(0, 8) + '…'
+  const entityName = entry.entity_id ? entityNames[entry.entity_id] : null
   const isAuto = entry.carry_behaviour_used === 'auto'
   const isLocked = snapshotStatus === 'complete'
   const isEditable = !isAuto && !isLocked
@@ -61,6 +58,11 @@ function EntryRow({ entry, snapshotId, snapshotStatus, conceptNames }: EntryRowP
       <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-[var(--text-h)] truncate">{conceptName}</p>
+          {entityName && (
+            <span className="text-[10px] text-[var(--accent)] font-medium block truncate mt-0.5">
+              {entityName}
+            </span>
+          )}
           {entry.formula_snapshot && (
             <code className="text-[10px] text-[var(--text)] block truncate mt-0.5">
               {entry.formula_snapshot}
@@ -96,7 +98,7 @@ function EntryRow({ entry, snapshotId, snapshotStatus, conceptNames }: EntryRowP
               onClick={() => {
                 const num = parseFloat(localValue)
                 if (!isNaN(num))
-                  saveMutation.mutate({ val: num, entityId: localEntityId || null })
+                  saveMutation.mutate(num)
               }}
               className="shrink-0"
             >
@@ -114,23 +116,6 @@ function EntryRow({ entry, snapshotId, snapshotStatus, conceptNames }: EntryRowP
         )}
       </div>
 
-      {isEditable && entities && entities.length > 0 && (
-        <div className="flex items-center gap-2 pl-0">
-          <label className="text-[10px] text-[var(--text)] shrink-0">Entity</label>
-          <select
-            aria-label={`Entity for ${conceptName}`}
-            className={`${selectClass} text-xs py-1 flex-1`}
-            value={localEntityId}
-            onChange={(e) => setLocalEntityId(e.target.value)}
-          >
-            <option value="">None</option>
-            {entities.map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
       {saveMutation.isError && (
         <p className="text-xs text-red-500">Failed to save.</p>
       )}
@@ -145,6 +130,7 @@ interface SnapshotEntriesProps {
   snapshotStatus: SnapshotStatus
   detail: ReturnType<typeof useQuery<ReturnType<typeof getSnapshot> extends Promise<infer T> ? T : never>>
   conceptNames: Record<string, string>
+  entityNames: Record<string, string>
   onProcess: () => void
   onComplete: () => void
   isProcessing: boolean
@@ -156,6 +142,7 @@ function SnapshotEntries({
   snapshotStatus,
   detail,
   conceptNames,
+  entityNames,
   onProcess,
   onComplete,
   isProcessing,
@@ -188,6 +175,7 @@ function SnapshotEntries({
           snapshotId={snapshotId}
           snapshotStatus={snapshotStatus}
           conceptNames={conceptNames}
+          entityNames={entityNames}
         />
       ))}
 
@@ -238,8 +226,17 @@ export default function SnapshotList() {
     queryFn: getConcepts,
   })
 
+  const { data: entities } = useQuery({
+    queryKey: ['entities'],
+    queryFn: () => getEntities(),
+  })
+
   const conceptNames: Record<string, string> = Object.fromEntries(
     (concepts ?? []).map((c) => [c.id, c.name]),
+  )
+
+  const entityNames: Record<string, string> = Object.fromEntries(
+    (entities ?? []).map((e: EntityRead) => [e.id, e.name]),
   )
 
   const processMutation = useMutation({
@@ -315,6 +312,7 @@ export default function SnapshotList() {
                 snapshotStatus={snapshotStatus}
                 detail={detailQuery as Parameters<typeof SnapshotEntries>[0]['detail']}
                 conceptNames={conceptNames}
+                entityNames={entityNames}
                 onProcess={() => processMutation.mutate(s.id)}
                 onComplete={() => completeMutation.mutate(s.id)}
                 isProcessing={processMutation.isPending}

@@ -13,8 +13,9 @@ class ConceptCreate(BaseModel):
     carry_behaviour: ConceptCarryBehaviour | None = None
     literal_value: float | None = None
     expression: str | None = None
-    parent_group_id: uuid.UUID | None = None
+    group_ids: list[uuid.UUID] = []
     aggregate_op: str | None = None
+    entity_type_id: uuid.UUID | None = None
 
 
 class ConceptRead(BaseModel):
@@ -28,8 +29,9 @@ class ConceptRead(BaseModel):
     carry_behaviour: ConceptCarryBehaviour
     literal_value: float | None
     expression: str | None
-    parent_group_id: uuid.UUID | None
+    group_ids: list[uuid.UUID] = []
     aggregate_op: str | None
+    entity_type_id: uuid.UUID | None = None
 
 
 class ConceptUpdate(BaseModel):
@@ -39,8 +41,9 @@ class ConceptUpdate(BaseModel):
     carry_behaviour: ConceptCarryBehaviour | None = None
     literal_value: float | None = None
     expression: str | None = None
-    parent_group_id: uuid.UUID | None = None
+    group_ids: list[uuid.UUID] | None = None
     aggregate_op: str | None = None
+    entity_type_id: uuid.UUID | None = None
 
 
 class ConceptListResponse(BaseModel):

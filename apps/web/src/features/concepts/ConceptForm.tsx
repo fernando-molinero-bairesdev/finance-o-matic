@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ApiError } from '../../lib/apiClient'
-import { createConcept, updateConcept, getCurrencies } from '../../lib/conceptsApi'
+import { createConcept, updateConcept, getCurrencies, getConcepts } from '../../lib/conceptsApi'
 import type { ConceptCreate, ConceptUpdate, ConceptKind, ConceptRead } from '../../lib/conceptsApi'
+import { getEntityTypes } from '../../lib/entitiesApi'
 import Button from '../../components/ui/Button'
 import FormField, { inputClass, selectClass } from '../../components/ui/FormField'
 
@@ -24,12 +25,28 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
       : '',
   )
   const [expression, setExpression] = useState(concept?.expression ?? '')
+  const [entityTypeId, setEntityTypeId] = useState(concept?.entity_type_id ?? '')
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(
+    new Set(concept?.group_ids ?? [])
+  )
   const [error, setError] = useState<string | null>(null)
 
   const { data: currencies } = useQuery({
     queryKey: ['currencies'],
     queryFn: getCurrencies,
   })
+
+  const { data: entityTypes } = useQuery({
+    queryKey: ['entity-types'],
+    queryFn: getEntityTypes,
+  })
+
+  const { data: allConcepts } = useQuery({
+    queryKey: ['concepts'],
+    queryFn: getConcepts,
+  })
+
+  const groups = allConcepts?.filter((c) => c.kind === 'group' && c.id !== concept?.id) ?? []
 
   const mutation = useMutation({
     mutationFn: (body: ConceptCreate | ConceptUpdate) =>
@@ -47,6 +64,15 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
     },
   })
 
+  function toggleGroup(id: string) {
+    setSelectedGroupIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -56,6 +82,8 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
       currency_code: currencyCode,
       ...(kind === 'value' && literalValue !== '' ? { literal_value: parseFloat(literalValue) } : {}),
       ...(kind === 'formula' || kind === 'aux' ? { expression } : {}),
+      entity_type_id: entityTypeId || null,
+      group_ids: Array.from(selectedGroupIds),
     }
     mutation.mutate(body)
   }
@@ -112,6 +140,23 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
         </select>
       </FormField>
 
+      {(kind === 'value' || kind === 'aux') && entityTypes && entityTypes.length > 0 && (
+        <FormField id="concept-entity-type" label="Track per Entity">
+          <select
+            id="concept-entity-type"
+            aria-label="Track per Entity"
+            value={entityTypeId}
+            onChange={(e) => setEntityTypeId(e.target.value)}
+            className={selectClass}
+          >
+            <option value="">None (single value)</option>
+            {entityTypes.map((et) => (
+              <option key={et.id} value={et.id}>{et.name}</option>
+            ))}
+          </select>
+        </FormField>
+      )}
+
       {kind === 'value' && (
         <FormField id="concept-literal-value" label="Literal Value">
           <input
@@ -135,6 +180,25 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
             className={inputClass}
           />
         </FormField>
+      )}
+
+      {kind !== 'group' && groups.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-[var(--text-h)]">Member of groups</p>
+          <div className="flex flex-wrap gap-2">
+            {groups.map((g) => (
+              <label key={g.id} className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={selectedGroupIds.has(g.id)}
+                  onChange={() => toggleGroup(g.id)}
+                  className="rounded border-[var(--border)] accent-[var(--accent)]"
+                />
+                <span className="text-xs text-[var(--text-h)]">{g.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="flex gap-2 pt-1">

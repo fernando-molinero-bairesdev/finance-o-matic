@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**finance-o-matic** is a personal finance graph modeling tool where users define financial concepts (balances, loans, income streams, etc.) as a directed acyclic graph (DAG). Concepts can be literal values, formulas referencing other concepts, or groups that aggregate others. It supports multi-currency, FX rates, and is designed for historical net-worth snapshots and charting.
+**finance-o-matic** is a personal finance graph modeling tool where users define financial concepts (balances, loans, income streams, etc.) as a directed acyclic graph (DAG). Concepts can be literal values, formulas referencing other concepts, or groups that aggregate others. It supports multi-currency, FX rates, entities (accounts, loans, assets), and historical net-worth snapshots with charting.
 
 ## Monorepo Structure
 
@@ -29,14 +29,19 @@ pnpm lint          # Lint all apps (ESLint for web, Ruff for api)
 pnpm typecheck     # Type-check all apps (tsc for web, mypy for api)
 ```
 
-To run a **single test file** in the backend:
+To run a **single backend test file**:
 ```bash
-cd apps/api && pytest tests/test_formula_engine.py -v
+pnpm --filter @finance-o-matic/api test -- tests/test_formula_engine.py -v
 ```
 
-To run a **single test file** in the frontend:
+To run **all frontend tests**:
 ```bash
-cd apps/web && pnpm test --run src/features/auth/auth.test.tsx
+pnpm --filter @finance-o-matic/web exec vitest run
+```
+
+To run a **single frontend test file**:
+```bash
+pnpm --filter @finance-o-matic/web exec vitest run src/features/concepts/ConceptForm.test.tsx
 ```
 
 ### Backend-specific
@@ -47,12 +52,13 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 # Migrations
 pnpm db:migrate                        # Apply all pending migrations (alembic upgrade head)
-pnpm db:revision -- -m "description"   # Auto-generate migration after model changes
 pnpm db:downgrade                      # Roll back one migration
 
-# Seed currency reference data (run once after initial migrate)
-python scripts/seed_currencies.py
+# Auto-generate a migration after model changes (pnpm db:revision arg parsing is broken; use directly):
+cd apps/api && node scripts/run-python.cjs -m alembic revision --autogenerate -m "description"
 ```
+
+> **Alembic env.py caveat:** `apps/api/alembic/env.py` must import every model file so autogenerate detects the full schema. If a model is missing from the import list, autogenerate will produce spurious DROP TABLE operations. Currently imports: user, currency, fx_rate, concept, concept_dependency, entity_type, entity_property_def, entity_property_value, entity, snapshot, concept_entry. Add any new model there.
 
 ### Frontend-specific
 
@@ -96,35 +102,56 @@ Copy `.env.example` to `.env`. Key variables:
 
 **Entry point:** `app/main.py` — Configures FastAPI app, CORS middleware, mounts auth routes via fastapi-users, and defines lifespan for DB initialization.
 
-**Auth:** `app/auth/users.py` — Uses [fastapi-users](https://fastapi-users.github.io/) with JWT strategy. The `current_active_user` FastAPI dependency is the standard way to protect routes.
+**Auth:** `app/auth/users.py` — Uses [fastapi-users](https://fastapi-users.github.io/) with JWT strategy. The `current_active_user` FastAPI dependency is the standard way to protect routes. The currencies `GET` endpoint is intentionally unauthenticated; all mutating currency routes require auth.
 
 **Database:** `app/core/db.py` — SQLAlchemy 2.0 async engine + session factory. All models inherit from a shared `Base`. Sessions are provided via a `get_async_session` dependency. The same codebase switches between SQLite (local) and Postgres (production) via `DATABASE_URL`.
 
 **Models:**
-- `Concept` — Core entity. `ConceptKind` enum: `value` (literal), `formula` (references others), `group` (aggregates), `aux` (auxiliary/reference-only). `ConceptCarryBehaviour` enum: `auto` (recomputed each snapshot), `copy` (carry forward from prior entry), `copy_or_manual` (copy if prior exists, else prompt). Defaults: `formula`/`group` → `auto`; `value` → `copy_or_manual`; `aux` → `copy`.
-- `ConceptDependency` — Tracks edges in the concept DAG for UI visualization and cycle detection.
-- `Currency` / `FxRate` — Reference tables for multi-currency support.
-- `Snapshot` — One instance of a snapshot run; records `date`, `label`, `trigger` (`manual|scheduled`), and `status` (`pending|complete|failed`). Status is `pending` when any entries need user input; transitions to `complete` when all entries are resolved.
-- `ConceptEntry` — Single ledger line within a Snapshot: evaluated `value`, `currency_code`, `carry_behaviour_used` (audit trail), `formula_snapshot` (frozen formula string at evaluation time), `is_pending` flag. Pending entries are those with `copy_or_manual` or `copy` behaviour that had no prior value to copy.
-- `Process` — Reusable snapshot template; defines name, cadence (`daily|weekly|monthly|quarterly|manual`), `is_active` flag, and concept scope (`all|selected`). When `is_active=True` and cadence is not `manual`, a `ProcessSchedule` row is maintained.
-- `ProcessSchedule` — Tracks `next_run_at` / `last_run_at` for scheduled processes. `next_run_at` is recalculated whenever the process cadence changes or `is_active` is set to `True`. APScheduler polls this table daily at 00:05.
+- `Concept` — Core entity. `ConceptKind`: `value` (literal), `formula` (references others), `group` (aggregates members), `aux` (auxiliary/reference-only). `ConceptCarryBehaviour`: `auto` (recomputed each snapshot), `copy` (carry forward), `copy_or_manual` (copy if prior exists, else prompt for input). Optional `entity_type_id` FK: when set, the snapshot service creates one `ConceptEntry` per entity of that type instead of one global entry.
+- `ConceptDependency` — Tracks edges in the concept DAG for visualization and cycle detection.
+- `Currency` / `FxRate` — Reference tables for multi-currency support. Currencies are seeded via `POST /api/v1/init/currencies` (idempotent; no auth required).
+- `Snapshot` — One snapshot run: `date`, `label`, `trigger` (`manual|scheduled`), `status` (`open|processed|complete`). Status machine: **open** (entries editable) → **processed** (formulas evaluated, review) → **complete** (locked).
+- `ConceptEntry` — Single ledger line within a Snapshot: `value`, `currency_code`, `carry_behaviour_used`, `formula_snapshot` (frozen formula at eval time), `is_pending`, `entity_id` (FK to Entity, set automatically by snapshot service for per-entity concepts).
+- `Process` — Reusable snapshot template; defines name, cadence (`daily|weekly|monthly|quarterly|manual`), `is_active` flag, and concept scope (`all|selected`).
+- `ProcessSchedule` — Tracks `next_run_at` / `last_run_at` for scheduled processes. `next_run_at` is recalculated on cadence change or reactivation. APScheduler polls this table daily at 00:05.
+- `EntityType` — User-defined category of real-world thing (Account, Loan, Asset, Investment). Seeded via `POST /api/v1/init/entity-types`.
+- `EntityPropertyDef` — Typed property definition on an EntityType (`decimal|string|date|entity_ref`; cardinality `one|many`).
+- `EntityPropertyValue` — Concrete value for one property on one Entity instance.
+- `Entity` — A named instance of an EntityType (e.g. "Chase Checking" of type Account). Unique per `(user_id, entity_type_id, name)`. Seeded via `POST /api/v1/init/entities`.
 
-**Formula Engine (`app/services/formula/engine.py`):** The most critical service. Uses Python's `ast` module + `simpleeval` for safe, sandboxed formula evaluation — no `eval()` of untrusted strings. Key functions:
-- `parse_formula()` — Validates syntax; only allows whitelisted operators and functions (`sum`, `min`, `max`, `if_`).
-- `extract_reference_names()` — Extracts which concept names a formula depends on.
+**Formula Engine (`app/services/formula/engine.py`):** The most critical service. Uses Python's `ast` module + `simpleeval` for safe, sandboxed evaluation — no `eval()`. Key functions:
+- `parse_formula()` — Validates syntax; whitelisted operators and functions (`sum`, `min`, `max`, `if_`).
+- `extract_reference_names()` — Extracts concept name dependencies from a formula string.
 - `detect_cycles()` — DFS cycle detection on the concept dependency graph.
-- `evaluate_concept_by_id()` — Recursive evaluation with memoization.
+- `evaluate_concept_by_id()` — Recursive evaluation with memoization. Groups find their children by filtering `concept_list` for `c.parent_group_id == node_id`.
 
-**Scheduler (`app/core/scheduler.py` + `app/services/scheduled_jobs.py`):** APScheduler `AsyncIOScheduler` started in the FastAPI lifespan (disabled when `settings.scheduled_jobs_enabled=False`, e.g. in tests). Two jobs:
-- `run_due_processes` — runs at 00:05 daily; queries active `ProcessSchedule` rows with `next_run_at <= today`, calls `take_snapshot` with `trigger=scheduled`, advances `next_run_at`.
-- `fetch_fx_rates` — runs at 06:00 daily; fetches from `https://api.frankfurter.app/latest?from={fx_base_currency}` via `httpx`, upserts `FxRate` rows.
+**Scheduler (`app/core/scheduler.py` + `app/services/scheduled_jobs.py`):** APScheduler `AsyncIOScheduler` started in the FastAPI lifespan (disabled in tests via `SCHEDULED_JOBS_ENABLED=False`). Two jobs:
+- `run_due_processes` — 00:05 daily; triggers snapshots for due active processes.
+- `fetch_fx_rates` — 06:00 daily; fetches from `https://api.frankfurter.app/latest?from={FX_BASE_CURRENCY}` via `httpx`, upserts `FxRate` rows.
 
-**API routes:** All under `/api/v1/`. Auth routes (`/auth/register`, `/auth/jwt/login`, `/users/me`, etc.) are mounted by fastapi-users. Custom routes are in `app/api/v1/`:
-- `app/api/v1/concepts.py` — full Concept CRUD + `POST /{id}/evaluate`
-- `app/api/v1/currencies.py` — `GET /currencies`
-- `app/api/v1/snapshots.py` — `POST /snapshots`, `GET /snapshots`, `GET /snapshots/{id}`, `PATCH /snapshots/{id}/entries/{entry_id}`
-- `app/api/v1/init.py` — `POST /init/concepts` (idempotent starter-concept seed)
-- `app/api/v1/processes.py` — full Process CRUD: `POST /processes`, `GET /processes`, `GET /processes/{id}`, `PUT /processes/{id}`, `DELETE /processes/{id}`, `POST /processes/{id}/snapshots` (trigger ad-hoc snapshot for a process)
+**API routes** (all under `/api/v1/`):
+- `concepts.py` — full Concept CRUD + `POST /{id}/evaluate`, `GET /{id}/history`
+- `currencies.py` — `GET` (no auth), `POST`, `PUT /{code}`, `DELETE /{code}` (auth required for mutations; DELETE returns 409 if referenced by concepts)
+- `entities.py` — EntityType CRUD + property defs + Entity CRUD + property values
+- `snapshots.py` — `POST /snapshots`, `GET /snapshots`, `GET /snapshots/{id}`, `POST /snapshots/{id}/process`, `POST /snapshots/{id}/complete`, `PATCH /snapshots/{id}/entries/{entry_id}`
+- `processes.py` — full Process CRUD + `POST /{id}/snapshots` (ad-hoc snapshot trigger)
+- `init.py` — idempotent seed endpoints: `POST /init/currencies` (no auth), `POST /init/concepts`, `POST /init/entity-types`, `POST /init/entities`
+
+### Snapshot State Machine
+
+```
+POST /snapshots → status: open
+  ↓ user fills in copy_or_manual entries via PATCH /snapshots/{id}/entries/{entry_id}
+POST /snapshots/{id}/process → status: processed  (formula auto entries evaluated)
+  ↓ user reviews computed values
+POST /snapshots/{id}/complete → status: complete   (locked; carry uses this as prior)
+```
+
+The `PATCH` entry endpoint preserves `entity_id` when not provided — it is set by the snapshot service and should not be cleared by normal value-entry edits.
+
+### Per-Entity Concepts
+
+When a concept has `entity_type_id` set, `take_snapshot()` creates one `ConceptEntry` per entity of that type (with `entity_id` set). Carry-forward looks up prior entries matching both `concept_id` and `entity_id`. If no entities of the bound type exist yet, falls back to a single entry with `entity_id=None`.
 
 ### Frontend (`apps/web`)
 
@@ -132,54 +159,69 @@ Copy `.env.example` to `.env`. Key variables:
 
 **State management:** TanStack Query (React Query) for all server state. React Context only for auth.
 
-**Routing:** React Router v7. Public routes: `/login`, `/register`. Protected routes: `/` (dashboard) and future pages.
+**Routing:** React Router v7. Protected routes are grouped under an `AppLayout` shell with a sidebar nav. Route groups:
+- `/` — Dashboard (active processes, portfolio trend chart, recent snapshots)
+- `/reports` — Full snapshot list + take-snapshot workflow
+- `/configuration/concepts` — Concept CRUD with group picker and entity-type binding
+- `/configuration/currencies` — Currency list, inline edit, create form, "Load standard currencies" init button
+- `/configuration/processes` — Process CRUD
+- `/configuration/entity-types` — EntityType + property management
+- `/entities` — Entity instances with expandable property editors
 
-**UI primitives** live in `src/components/ui/`: `Button` (variant: primary/secondary/danger/ghost, size: sm/md), `FormField` (label + children + error, exports `inputClass`/`selectClass`), `Badge` (variant: success/pending/warning/neutral/purple). Tailwind CSS v4 is used via `@tailwindcss/vite`; all colors come from CSS custom properties (`--accent`, `--bg`, `--border`, etc.) applied as Tailwind arbitrary values.
+**API modules** in `src/lib/`:
+- `currenciesApi.ts` — full currency CRUD + `initCurrencies()`. `conceptsApi.ts` re-exports `CurrencyRead` and `getCurrencies` from here for backward compatibility.
+- `conceptsApi.ts` — concept CRUD, `getConceptHistory()`, `initConcepts()`
+- `snapshotsApi.ts` — snapshot lifecycle, entry updates
+- `entitiesApi.ts` — entity types, entity instances, property values, `initEntityTypes()`, `initEntities()`
+- `processesApi.ts` — process CRUD
 
-**Dashboard:** `pages/DashboardPage.tsx` is a full app shell (sticky header + `max-w-2xl` centered main) with three card sections:
-- *Concepts* — `ConceptInitButton` (seeds starter concepts), `ConceptForm` (add concept), `ConceptList` (list + delete)
-- *Processes* — `ProcessForm` (create/edit, with concept multi-select when scope=selected), `ProcessList` (edit, toggle active, take ad-hoc snapshot, delete)
-- *Snapshots* — `TakeSnapshotForm` (date + label), `PendingEntriesForm` (inline resolution for `copy_or_manual` entries with no prior value), `SnapshotList` (history with status Badge)
+**UI primitives** in `src/components/ui/`: `Button` (variant: primary/secondary/danger/ghost, size: sm/md), `FormField` (label + children + error, exports `inputClass`/`selectClass`), `Badge` (variant: success/pending/warning/neutral/purple). Tailwind CSS v4 via `@tailwindcss/vite`; all colors from CSS custom properties (`--accent`, `--bg`, `--border`, etc.).
 
 ### Data Flow
 
-1. User authenticates → JWT stored in React Context (and likely localStorage)
-2. Frontend fetches/mutates concepts via `apiClient.ts` → TanStack Query cache
-3. `POST /init/concepts` seeds a standard set of starter concepts (idempotent)
-4. `POST /snapshots` triggers the take-snapshot service: evaluates `auto` concepts via the formula engine, carries forward `copy` values from the prior snapshot, marks `copy_or_manual` entries with no prior value as `is_pending`
-5. User resolves pending entries via `PATCH /snapshots/{id}/entries/{entry_id}`; snapshot transitions to `complete` when all entries are resolved
+1. User authenticates → JWT stored in React Context + localStorage
+2. Call `POST /init/currencies`, `POST /init/entity-types`, `POST /init/entities`, `POST /init/concepts` to seed reference data (idempotent; safe to repeat)
+3. User defines concepts (values, formulas, groups) and optionally binds them to an entity type
+4. `POST /snapshots` → snapshot enters `open` state; per-entity concepts get one entry per entity
+5. User fills manual entries → `POST /snapshots/{id}/process` evaluates formulas → `POST /snapshots/{id}/complete` locks it
+6. `GET /concepts/{id}/history` returns time-series of values across complete snapshots for charting
 
-## Current Development Stage (M5 complete)
-
-Authentication, core data models, formula engine, full Concept CRUD, Snapshot + ConceptEntry, concept initialization, pending-entry resolution, Process CRUD, APScheduler integration, FX rate fetching, and a full responsive UI are all complete and fully tested.
+## Current Development Stage
 
 **Completed milestones:**
 - **M1** — Auth, core models, formula engine
-- **M2** — Concept CRUD UI + carry behaviour field, groups/aggregation
-- **M3** — Snapshots + ConceptEntry: take-snapshot endpoint, pending-entry resolution UI, `POST /init/concepts` starter-concept seed (TDD throughout)
-- **M4** — Processes: `Process` + `ProcessSchedule` models, full Process CRUD API + frontend (create/edit/delete, is_active toggle, ad-hoc snapshot per process, concept multi-select for `selected` scope)
-- **M5** — Scheduled & Event Triggers: APScheduler daily polling job (`run_due_processes`), FX rate fetching from `frankfurter.app` (`fetch_fx_rates`), `ProcessSchedule` lifecycle sync on PUT (cadence change or reactivation recalculates `next_run_at`), `SnapshotTrigger.scheduled` enum value
-- **Responsive UI** — Tailwind CSS v4, shared UI primitives (Button, FormField, Badge), full mobile-first visual overhaul of all pages and feature components
+- **M2** — Concept CRUD UI + carry behaviour, groups/aggregation
+- **M3** — Snapshots + ConceptEntry: take-snapshot, pending-entry resolution, `POST /init/concepts`
+- **M4** — Processes: full CRUD, is_active toggle, ad-hoc snapshot, concept multi-select scope
+- **M5** — Scheduled triggers: APScheduler (`run_due_processes`, `fetch_fx_rates`), `ProcessSchedule` lifecycle
+- **M6** — Charting: `GET /concepts/{id}/history`, `ConceptTrendChart` (recharts line chart) on Dashboard + Reports
+- **Entity system** — EntityType/EntityPropertyDef/Entity models, full CRUD, per-entity concept entries
+- **Currency CRUD** — Full create/edit/delete UI, `POST /init/currencies` endpoint
+- **Responsive UI** — AppLayout with sidebar nav, Tailwind CSS v4, shared UI primitives
 
-**Upcoming milestones:**
-- **M6** — Charting: time-series queries over ConceptEntry, D3 dashboard charts (net worth over time, per-concept trends).
+**In progress / upcoming:**
+- **Many-to-many group membership** — Replace single `parent_group_id` FK with a `concept_group_memberships` junction table so a concept can belong to multiple groups simultaneously. Requires engine change (`group_members` dict param), schema change (`group_ids: list[UUID]`), migration, and multi-checkbox UI in ConceptForm.
 
 ## Testing Strategy
 
-All new features from M3 onward are developed TDD: tests are written first (RED), then the implementation makes them pass (GREEN).
+All new features from M3 onward are developed TDD: tests written first (RED), then implementation makes them pass (GREEN).
 
 - **Backend:** pytest with `pytest-asyncio`. Tests use `aiosqlite` in-memory DB. Each feature has its own test file:
-  - `test_formula_engine.py` — table-driven, comprehensive; always add cases here for new formula features
-  - `test_concept_model.py` — unit tests for model defaults and carry behaviour logic
+  - `test_formula_engine.py` — table-driven; add cases here for any new formula features
+  - `test_concept_model.py` — model defaults and carry behaviour logic
   - `test_concept_schemas.py` — pure Pydantic schema validation
-  - `test_concepts_crud.py` — integration tests for the Concept CRUD endpoints
-  - `test_concept_init.py` — integration tests for `POST /init/concepts` (idempotency, formula eval, group membership)
-  - `test_currencies.py` — currency endpoint tests
-  - `test_group_evaluation.py` — group aggregation tests
-  - `test_processes_crud.py` — Process CRUD + lifecycle sync (cadence change / reactivation recalculates `next_run_at`)
-  - `test_process_snapshots.py` — `POST /processes/{id}/snapshots` ad-hoc snapshot trigger
-  - `test_scheduled_jobs.py` — `run_due_processes` job (uses `StaticPool` for multi-session in-memory SQLite)
+  - `test_concepts_crud.py` — Concept CRUD endpoint integration tests
+  - `test_concept_init.py` — `POST /init/concepts` idempotency and formula eval
+  - `test_currencies.py` — currency endpoint tests (list, create, update, delete, 409 on in-use delete)
+  - `test_group_evaluation.py` — group aggregation (sum/avg/min/max, nested groups, formula children)
+  - `test_entity_type_init.py` — entity type seeding
+  - `test_processes_crud.py` — Process CRUD + `ProcessSchedule` lifecycle sync
+  - `test_process_snapshots.py` — `POST /processes/{id}/snapshots` ad-hoc trigger
+  - `test_scheduled_jobs.py` — `run_due_processes` job (uses `StaticPool` for multi-session SQLite)
   - `test_fx_service.py` — `fetch_fx_rates` job (httpx mocked with async context manager)
+  - `test_snapshot_per_entity.py` — per-entity concept entries, entity-scoped carry, `POST /init/entities`
+  - `test_snapshot_workflow.py` — full open→process→complete state machine
+
 - **Frontend:** Vitest + React Testing Library with jsdom.
   - `features/auth/auth.test.tsx` — auth flows and route guards
   - `features/concepts/ConceptForm.test.tsx` — concept creation form
@@ -187,5 +229,5 @@ All new features from M3 onward are developed TDD: tests are written first (RED)
   - `features/concepts/ConceptInitButton.test.tsx` — initialization button states
   - `features/processes/ProcessForm.test.tsx` — create + edit mode, concept picker for `selected` scope
   - `features/processes/ProcessList.test.tsx` — edit inline, active toggle, ad-hoc snapshot
-  - `lib/conceptsApi.test.ts` — API client unit tests
+  - `lib/conceptsApi.test.ts` — API client unit tests (imports `getCurrencies` via re-export from `currenciesApi`)
   - `pages/DashboardPage.test.tsx` — dashboard integration

@@ -51,7 +51,7 @@ const conceptFixture: ConceptRead = {
   carry_behaviour: 'copy_or_manual',
   literal_value: 5000,
   expression: null,
-  parent_group_id: null,
+  group_ids: [],
   aggregate_op: null,
 }
 

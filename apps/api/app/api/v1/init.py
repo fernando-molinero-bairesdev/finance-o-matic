@@ -1,9 +1,13 @@
 """Initialization endpoints.
 
+POST /api/v1/init/currencies    — standard ISO 4217 currencies (idempotent, no auth)
 POST /api/v1/init/concepts      — starter concepts (idempotent)
 POST /api/v1/init/entity-types  — starter entity types (idempotent)
+POST /api/v1/init/entities      — starter entities (idempotent)
 """
-from fastapi import APIRouter, Depends, Response, status
+from collections import defaultdict
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.users import current_active_user
 from app.core.db import get_async_session
 from app.models.concept import Concept, ConceptCarryBehaviour, ConceptKind
+from app.models.concept_group_membership import ConceptGroupMembership
+from app.models.currency import Currency
+from app.models.entity import Entity
 from app.models.entity_property_def import EntityPropertyCardinality, EntityPropertyDef, EntityPropertyType
 from app.models.entity_type import EntityType
 from app.models.user import User
@@ -72,12 +79,12 @@ _SEED: list[dict] = [
         "name": "loan_payment",
         "kind": ConceptKind.value,
         "currency_code": "USD",
-        # parent_group_id filled in at runtime
     },
 ]
 
-_PARENT_MAP: dict[str, str] = {
-    "loan_payment": "loans",
+# Maps concept name → list of group names it should belong to
+_MEMBERSHIP_MAP: dict[str, list[str]] = {
+    "loan_payment": ["loans"],
 }
 
 
@@ -104,7 +111,6 @@ async def init_concepts(
     created: list[Concept] = []
     skipped: list[str] = []
 
-    # First pass — create everything except concepts that need a parent resolved
     created_by_name: dict[str, Concept] = dict(existing)
 
     for seed in _SEED:
@@ -113,18 +119,18 @@ async def init_concepts(
             skipped.append(name)
             continue
 
-        kwargs = {k: v for k, v in seed.items()}
-        parent_name = _PARENT_MAP.get(name)
-        if parent_name:
-            parent = created_by_name.get(parent_name)
-            if parent is not None:
-                kwargs["parent_group_id"] = parent.id
-
-        concept = Concept(user_id=current_user.id, **kwargs)
+        concept = Concept(user_id=current_user.id, **seed)
         session.add(concept)
         await session.flush()
         created_by_name[name] = concept
         created.append(concept)
+
+    # Create group memberships for newly created concepts
+    for concept in created:
+        for group_name in _MEMBERSHIP_MAP.get(concept.name, []):
+            group = created_by_name.get(group_name)
+            if group is not None:
+                session.add(ConceptGroupMembership(concept_id=concept.id, group_id=group.id))
 
     await session.commit()
     for c in created:
@@ -135,10 +141,22 @@ async def init_concepts(
         response.status_code = status.HTTP_200_OK
         return ConceptInitResponse(created=[], skipped=all_skipped)
 
-    return ConceptInitResponse(
-        created=[ConceptRead.model_validate(c) for c in created],
-        skipped=all_skipped,
+    # Build group_ids for the response
+    created_ids = [c.id for c in created]
+    mem_result = await session.execute(
+        select(ConceptGroupMembership).where(ConceptGroupMembership.concept_id.in_(created_ids))
     )
+    gids_by_concept: dict = defaultdict(list)
+    for m in mem_result.scalars().all():
+        gids_by_concept[m.concept_id].append(m.group_id)
+
+    reads: list[ConceptRead] = []
+    for c in created:
+        cr = ConceptRead.model_validate(c)
+        cr.group_ids = gids_by_concept.get(c.id, [])
+        reads.append(cr)
+
+    return ConceptInitResponse(created=reads, skipped=all_skipped)
 
 
 # ── Entity-type seed ──────────────────────────────────────────────────────────
@@ -235,3 +253,127 @@ async def init_entity_types(
         response.status_code = status.HTTP_200_OK
 
     return EntityTypeInitResponse(created=created, skipped=skipped)
+
+
+# ── Entity seed ───────────────────────────────────────────────────────────────
+
+_ENTITY_SEED: list[dict] = [
+    {"entity_type": "Account", "name": "My Checking"},
+    {"entity_type": "Account", "name": "My Savings"},
+    {"entity_type": "Loan",    "name": "Car Loan"},
+    {"entity_type": "Loan",    "name": "Home Mortgage"},
+    {"entity_type": "Investment", "name": "Stock Portfolio"},
+]
+
+
+class EntityInitResponse(BaseModel):
+    created: list[str]
+    skipped: list[str]
+
+
+@router.post(
+    "/entities",
+    response_model=EntityInitResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def init_entities(
+    response: Response,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> EntityInitResponse:
+    # Require entity types to exist first
+    et_result = await session.execute(
+        select(EntityType).where(EntityType.user_id == current_user.id)
+    )
+    entity_types: dict[str, EntityType] = {et.name: et for et in et_result.scalars().all()}
+
+    missing = {s["entity_type"] for s in _ENTITY_SEED} - entity_types.keys()
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Missing entity types: {sorted(missing)}. Call POST /init/entity-types first.",
+        )
+
+    # Fetch existing entities
+    existing_result = await session.execute(
+        select(Entity).where(Entity.user_id == current_user.id)
+    )
+    existing_keys = {
+        (e.entity_type_id, e.name) for e in existing_result.scalars().all()
+    }
+
+    created: list[str] = []
+    skipped: list[str] = []
+
+    for seed in _ENTITY_SEED:
+        et = entity_types[seed["entity_type"]]
+        key = (et.id, seed["name"])
+        if key in existing_keys:
+            skipped.append(seed["name"])
+            continue
+        session.add(Entity(user_id=current_user.id, entity_type_id=et.id, name=seed["name"]))
+        created.append(seed["name"])
+
+    await session.commit()
+
+    if not created:
+        response.status_code = status.HTTP_200_OK
+
+    return EntityInitResponse(created=created, skipped=skipped)
+
+
+# ── Currency seed ─────────────────────────────────────────────────────────────
+
+# fmt: off
+_ISO_CURRENCIES: list[tuple[str, str]] = [
+    ("AED", "UAE Dirham"), ("ARS", "Argentine Peso"), ("AUD", "Australian Dollar"),
+    ("BRL", "Brazilian Real"), ("CAD", "Canadian Dollar"), ("CHF", "Swiss Franc"),
+    ("CLP", "Chilean Peso"), ("CNY", "Chinese Yuan Renminbi"), ("COP", "Colombian Peso"),
+    ("CZK", "Czech Koruna"), ("DKK", "Danish Krone"), ("EUR", "Euro"),
+    ("GBP", "British Pound Sterling"), ("HKD", "Hong Kong Dollar"),
+    ("HNL", "Honduran Lempira"), ("HUF", "Hungarian Forint"),
+    ("IDR", "Indonesian Rupiah"), ("ILS", "Israeli New Shekel"), ("INR", "Indian Rupee"),
+    ("JPY", "Japanese Yen"), ("KRW", "South Korean Won"), ("MXN", "Mexican Peso"),
+    ("MYR", "Malaysian Ringgit"), ("NOK", "Norwegian Krone"), ("NZD", "New Zealand Dollar"),
+    ("PEN", "Peruvian Sol"), ("PHP", "Philippine Peso"), ("PLN", "Polish Zloty"),
+    ("RON", "Romanian Leu"), ("RUB", "Russian Ruble"), ("SAR", "Saudi Riyal"),
+    ("SEK", "Swedish Krona"), ("SGD", "Singapore Dollar"), ("THB", "Thai Baht"),
+    ("TRY", "Turkish Lira"), ("TWD", "New Taiwan Dollar"), ("UAH", "Ukrainian Hryvnia"),
+    ("USD", "US Dollar"), ("VND", "Vietnamese Dong"), ("ZAR", "South African Rand"),
+]
+# fmt: on
+
+
+class CurrencyInitResponse(BaseModel):
+    created: list[str]
+    skipped: list[str]
+
+
+@router.post(
+    "/currencies",
+    response_model=CurrencyInitResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def init_currencies(
+    response: Response,
+    session: AsyncSession = Depends(get_async_session),
+) -> CurrencyInitResponse:
+    existing_codes: set[str] = set(
+        (await session.scalars(select(Currency.code))).all()
+    )
+    created: list[str] = []
+    skipped: list[str] = []
+
+    for code, name in _ISO_CURRENCIES:
+        if code in existing_codes:
+            skipped.append(code)
+        else:
+            session.add(Currency(code=code, name=name))
+            created.append(code)
+
+    if created:
+        await session.commit()
+    else:
+        response.status_code = status.HTTP_200_OK
+
+    return CurrencyInitResponse(created=created, skipped=skipped)

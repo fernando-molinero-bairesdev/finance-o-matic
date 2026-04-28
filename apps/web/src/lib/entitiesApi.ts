@@ -89,6 +89,15 @@ export async function initEntityTypes(): Promise<EntityTypeInitResponse> {
   return apiFetch<EntityTypeInitResponse>('/api/v1/init/entity-types', { method: 'POST' })
 }
 
+export interface EntityInitResponse {
+  created: string[]
+  skipped: string[]
+}
+
+export async function initEntities(): Promise<EntityInitResponse> {
+  return apiFetch<EntityInitResponse>('/api/v1/init/entities', { method: 'POST' })
+}
+
 // ── Entity Types ──────────────────────────────────────────────────────────────
 
 export async function getEntityTypes(): Promise<EntityTypeDetail[]> {

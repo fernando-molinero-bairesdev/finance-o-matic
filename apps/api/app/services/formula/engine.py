@@ -230,7 +230,11 @@ def detect_cycles(dependencies: dict[uuid.UUID, set[uuid.UUID]]) -> None:
         visit(current)
 
 
-def evaluate_concept_by_id(concept_id: uuid.UUID, concepts: Iterable[Concept]) -> float:
+def evaluate_concept_by_id(
+    concept_id: uuid.UUID,
+    concepts: Iterable[Concept],
+    group_members: dict[uuid.UUID, list] | None = None,
+) -> float:
     concept_list = list(concepts)
     concepts_by_id = {concept.id: concept for concept in concept_list}
     concepts_by_name = {concept.name: concept for concept in concept_list}
@@ -270,7 +274,7 @@ def evaluate_concept_by_id(concept_id: uuid.UUID, concepts: Iterable[Concept]) -
                     variables[ref_name] = evaluate_node(ref_concept.id)
                 result = _evaluate_expression(concept.expression, variables)
             elif concept.kind == ConceptKind.group:
-                children = [c for c in concept_list if c.parent_group_id == node_id]
+                children = (group_members or {}).get(node_id, [])
                 if not children:
                     raise FormulaEvaluationError(f"Group '{concept.name}' has no children to aggregate")
                 op = concept.aggregate_op

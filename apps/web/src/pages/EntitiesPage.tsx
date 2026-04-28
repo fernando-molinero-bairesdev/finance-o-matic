@@ -16,6 +16,7 @@ import type {
 } from '../lib/entitiesApi'
 import Button from '../components/ui/Button'
 import FormField, { inputClass, selectClass } from '../components/ui/FormField'
+import EntityInitButton from '../features/entities/EntityInitButton'
 
 // ── Property value display ────────────────────────────────────────────────────
 
@@ -436,13 +437,21 @@ export default function EntitiesPage() {
       {allEntities && (
         <>
           {filtered.length === 0 ? (
-            <p className="px-4 py-4 text-sm text-[var(--text)]">No entities found.</p>
+            <div className="px-4 py-4 space-y-3">
+              <p className="text-sm text-[var(--text)]">No entities found.</p>
+              <EntityInitButton />
+            </div>
           ) : (
-            <ul>
-              {filtered.map((entity) => (
-                <EntityRow key={entity.id} entity={entity} allEntities={allEntities} />
-              ))}
-            </ul>
+            <>
+              <ul>
+                {filtered.map((entity) => (
+                  <EntityRow key={entity.id} entity={entity} allEntities={allEntities} />
+                ))}
+              </ul>
+              <div className="px-4 py-3 border-t border-[var(--border)]">
+                <EntityInitButton />
+              </div>
+            </>
           )}
           <CreateEntityForm selectedTypeId={filterTypeId} />
         </>

@@ -53,11 +53,12 @@ class Concept(Base):
     )
     literal_value: Mapped[float | None] = mapped_column(nullable=True)
     expression: Mapped[str | None] = mapped_column(Text, nullable=True)
-    parent_group_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("concepts.id", ondelete="SET NULL"),
-        nullable=True,
-    )
     aggregate_op: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    entity_type_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("entity_types.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     __table_args__ = (
         UniqueConstraint("user_id", "name", name="uq_concept_user_name"),

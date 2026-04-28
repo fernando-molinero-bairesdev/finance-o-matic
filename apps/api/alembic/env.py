@@ -15,6 +15,12 @@ import app.models.currency  # noqa: F401
 import app.models.fx_rate  # noqa: F401
 import app.models.concept  # noqa: F401
 import app.models.concept_dependency  # noqa: F401
+import app.models.entity_type  # noqa: F401
+import app.models.entity_property_def  # noqa: F401
+import app.models.entity_property_value  # noqa: F401
+import app.models.entity  # noqa: F401
+import app.models.snapshot  # noqa: F401
+import app.models.concept_entry  # noqa: F401
 
 config = context.config
 

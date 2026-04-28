@@ -52,9 +52,9 @@ function renderButton(onSuccess = vi.fn()) {
 
 const initResponseFixture = {
   created: [
-    { id: 'c1', name: 'rent', kind: 'value' as const, user_id: 'u1', currency_code: 'USD', carry_behaviour: 'copy_or_manual' as const, literal_value: null, expression: null, parent_group_id: null, aggregate_op: null },
-    { id: 'c2', name: 'loans', kind: 'group' as const, user_id: 'u1', currency_code: 'USD', carry_behaviour: 'auto' as const, literal_value: null, expression: null, parent_group_id: null, aggregate_op: 'sum' },
-    { id: 'c3', name: 'monthly_salary', kind: 'formula' as const, user_id: 'u1', currency_code: 'USD', carry_behaviour: 'auto' as const, literal_value: null, expression: 'hourly_rate * hours_per_day * working_days', parent_group_id: null, aggregate_op: null },
+    { id: 'c1', name: 'rent', kind: 'value' as const, user_id: 'u1', currency_code: 'USD', carry_behaviour: 'copy_or_manual' as const, literal_value: null, expression: null, group_ids: [], aggregate_op: null },
+    { id: 'c2', name: 'loans', kind: 'group' as const, user_id: 'u1', currency_code: 'USD', carry_behaviour: 'auto' as const, literal_value: null, expression: null, group_ids: [], aggregate_op: 'sum' },
+    { id: 'c3', name: 'monthly_salary', kind: 'formula' as const, user_id: 'u1', currency_code: 'USD', carry_behaviour: 'auto' as const, literal_value: null, expression: 'hourly_rate * hours_per_day * working_days', group_ids: [], aggregate_op: null },
   ],
   skipped: [],
 }

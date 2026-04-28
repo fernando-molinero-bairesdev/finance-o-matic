@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.concept import Concept, ConceptCarryBehaviour, ConceptKind
 from app.models.concept_entry import ConceptEntry
+from app.models.concept_group_membership import ConceptGroupMembership
+from app.models.entity import Entity
 from app.models.snapshot import Snapshot, SnapshotStatus, SnapshotTrigger
 from app.services.formula import FormulaEvaluationError, evaluate_concept_by_id
 
@@ -15,9 +17,10 @@ async def _get_prior_entry(
     session: AsyncSession,
     user_id: uuid.UUID,
     concept_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> ConceptEntry | None:
     """Return the most recent resolved ConceptEntry from a complete snapshot."""
-    result = await session.execute(
+    query = (
         select(ConceptEntry)
         .join(Snapshot, ConceptEntry.snapshot_id == Snapshot.id)
         .where(
@@ -25,8 +28,13 @@ async def _get_prior_entry(
             ConceptEntry.concept_id == concept_id,
             Snapshot.status == SnapshotStatus.complete,
         )
-        .order_by(Snapshot.date.desc(), Snapshot.id.desc())
-        .limit(1)
+    )
+    if entity_id is not None:
+        query = query.where(ConceptEntry.entity_id == entity_id)
+    else:
+        query = query.where(ConceptEntry.entity_id.is_(None))
+    result = await session.execute(
+        query.order_by(Snapshot.date.desc(), Snapshot.id.desc()).limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -46,6 +54,15 @@ async def take_snapshot(
     concepts_result = await session.execute(query)
     concepts = list(concepts_result.scalars().all())
 
+    # Fetch all entities for this user, grouped by entity_type_id
+    entities_result = await session.execute(
+        select(Entity).where(Entity.user_id == user_id)
+    )
+    all_entities = list(entities_result.scalars().all())
+    entities_by_type: dict[uuid.UUID, list[Entity]] = {}
+    for entity in all_entities:
+        entities_by_type.setdefault(entity.entity_type_id, []).append(entity)
+
     snapshot = Snapshot(
         user_id=user_id,
         process_id=process_id,
@@ -61,29 +78,41 @@ async def take_snapshot(
 
     for concept in concepts:
         behaviour = concept.carry_behaviour
-        value: float | None = None
 
-        if behaviour == ConceptCarryBehaviour.auto:
-            # Auto concepts are evaluated later when the user processes the snapshot.
-            # Leave value as None until then.
-            pass
+        if concept.entity_type_id is not None:
+            # Per-entity concept: create one entry per entity of the bound type.
+            bound_entities = entities_by_type.get(concept.entity_type_id, [])
+            if not bound_entities:
+                # No entities of that type yet — fall back to a single entry
+                bound_entities_or_none: list[Entity | None] = [None]
+            else:
+                bound_entities_or_none = list(bound_entities)  # type: ignore[assignment]
+        else:
+            bound_entities_or_none = [None]
 
-        elif behaviour in (ConceptCarryBehaviour.copy, ConceptCarryBehaviour.copy_or_manual):
-            prior = await _get_prior_entry(session, user_id, concept.id)
-            if prior is not None:
-                value = prior.value
+        for entity in bound_entities_or_none:
+            entity_id = entity.id if entity is not None else None
+            value: float | None = None
 
-        entries.append(
-            ConceptEntry(
-                snapshot_id=snapshot.id,
-                concept_id=concept.id,
-                value=value,
-                currency_code=concept.currency_code,
-                carry_behaviour_used=behaviour,
-                formula_snapshot=None,
-                is_pending=False,
+            if behaviour == ConceptCarryBehaviour.auto:
+                pass
+            elif behaviour in (ConceptCarryBehaviour.copy, ConceptCarryBehaviour.copy_or_manual):
+                prior = await _get_prior_entry(session, user_id, concept.id, entity_id=entity_id)
+                if prior is not None:
+                    value = prior.value
+
+            entries.append(
+                ConceptEntry(
+                    snapshot_id=snapshot.id,
+                    concept_id=concept.id,
+                    value=value,
+                    currency_code=concept.currency_code,
+                    carry_behaviour_used=behaviour,
+                    formula_snapshot=None,
+                    is_pending=False,
+                    entity_id=entity_id,
+                )
             )
-        )
 
     session.add_all(entries)
     await session.commit()
@@ -106,13 +135,24 @@ async def process_snapshot(
     )
     all_concepts = list(all_concepts_result.scalars().all())
 
+    # Load group memberships and build group_id → [member concepts] dict
+    concept_ids = [c.id for c in all_concepts]
+    mem_result = await session.execute(
+        select(ConceptGroupMembership).where(
+            ConceptGroupMembership.concept_id.in_(concept_ids)
+        )
+    )
+    concept_map = {c.id: c for c in all_concepts}
+    group_members: dict[uuid.UUID, list] = {}
+    for m in mem_result.scalars().all():
+        if m.concept_id in concept_map:
+            group_members.setdefault(m.group_id, []).append(concept_map[m.concept_id])
+
     # Load the snapshot's entries
     entries_result = await session.execute(
         select(ConceptEntry).where(ConceptEntry.snapshot_id == snapshot.id)
     )
     entries = list(entries_result.scalars().all())
-
-    concept_map = {c.id: c for c in all_concepts}
 
     # Build a map of concept_id → value from the snapshot's non-auto entries.
     # The formula engine uses concept.literal_value for ConceptKind.value nodes, but
@@ -136,7 +176,6 @@ async def process_snapshot(
                     kind=c.kind,
                     literal_value=entry_val,
                     expression=c.expression,
-                    parent_group_id=c.parent_group_id,
                     aggregate_op=c.aggregate_op,
                 ))
             else:
@@ -146,7 +185,9 @@ async def process_snapshot(
     for entry in entries:
         if entry.carry_behaviour_used == ConceptCarryBehaviour.auto:
             try:
-                entry.value = evaluate_concept_by_id(entry.concept_id, _patched_concepts())
+                entry.value = evaluate_concept_by_id(
+                    entry.concept_id, _patched_concepts(), group_members
+                )
             except FormulaEvaluationError:
                 entry.value = None
             concept = concept_map.get(entry.concept_id)
