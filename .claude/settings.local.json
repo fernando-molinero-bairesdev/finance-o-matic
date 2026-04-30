@@ -46,7 +46,8 @@
       "Bash(pnpm --filter @finance-o-matic/api test)",
       "Bash(pnpm --filter @finance-o-matic/web typecheck)",
       "Bash(pnpm --filter @finance-o-matic/web exec vitest run)",
-      "Bash(grep -E \"\\\\.\\(py|tsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(py|tsx\\)$\")",
+      "Bash(python -m pytest tests/test_formula_engine.py -x -q)"
     ]
   }
 }

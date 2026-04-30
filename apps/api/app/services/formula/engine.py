@@ -181,6 +181,37 @@ def _evaluate_expression(expression: str, variables: dict[str, float]) -> float:
     return _to_float(value)
 
 
+def _convert_currency(
+    value: float,
+    from_code: str,
+    to_code: str,
+    rates: dict[str, float],
+    base_code: str,
+) -> float:
+    """Convert *value* from *from_code* to *to_code* using FX rates.
+
+    *rates* maps quote_code → rate where 1 base_code = rate quote_code.
+    Returns *value* unchanged if either currency is missing from *rates*.
+    """
+    if from_code == to_code:
+        return value
+    # to_base: value in base currency
+    if from_code == base_code:
+        value_in_base = value
+    else:
+        from_rate = rates.get(from_code)
+        if not from_rate:
+            return value
+        value_in_base = value / from_rate
+    # base_to_target
+    if to_code == base_code:
+        return value_in_base
+    to_rate = rates.get(to_code)
+    if not to_rate:
+        return value_in_base
+    return value_in_base * to_rate
+
+
 def extract_dependency_graph(concepts: Iterable[Concept]) -> dict[uuid.UUID, set[uuid.UUID]]:
     concept_by_name = {concept.name: concept for concept in concepts}
     dependencies: dict[uuid.UUID, set[uuid.UUID]] = {}
@@ -234,15 +265,30 @@ def evaluate_concept_by_id(
     concept_id: uuid.UUID,
     concepts: Iterable[Concept],
     group_members: dict[uuid.UUID, list] | None = None,
+    fx_rates: dict[str, float] | None = None,
+    base_currency: str = "USD",
 ) -> float:
+    """Evaluate a concept by id.
+
+    *fx_rates* maps quote_code → rate (1 base_currency = rate quote_code).
+    When provided, cross-currency references in formulas and groups are
+    automatically converted to the consuming concept's currency.
+    """
     concept_list = list(concepts)
     concepts_by_id = {concept.id: concept for concept in concept_list}
     concepts_by_name = {concept.name: concept for concept in concept_list}
     dependencies = extract_dependency_graph(concept_list)
     detect_cycles(dependencies)
 
+    rates = fx_rates or {}
     memo: dict[uuid.UUID, float] = {}
     visiting: list[uuid.UUID] = []
+
+    def _currency(c: object) -> str:
+        return getattr(c, "currency_code", base_currency) or base_currency
+
+    def _to_currency(value: float, child: object, parent: object) -> float:
+        return _convert_currency(value, _currency(child), _currency(parent), rates, base_currency)
 
     def evaluate_node(node_id: uuid.UUID) -> float:
         if node_id in memo:
@@ -271,7 +317,8 @@ def evaluate_concept_by_id(
                         raise FormulaEvaluationError(
                             f"Unknown concept reference '{ref_name}' in '{concept.name}'"
                         )
-                    variables[ref_name] = evaluate_node(ref_concept.id)
+                    raw = evaluate_node(ref_concept.id)
+                    variables[ref_name] = _to_currency(raw, ref_concept, concept)
                 result = _evaluate_expression(concept.expression, variables)
             elif concept.kind == ConceptKind.group:
                 children = (group_members or {}).get(node_id, [])
@@ -280,7 +327,10 @@ def evaluate_concept_by_id(
                 op = concept.aggregate_op
                 if op is None:
                     raise FormulaEvaluationError(f"Group '{concept.name}' has no aggregate_op set")
-                child_values = [evaluate_node(child.id) for child in children]
+                child_values = [
+                    _to_currency(evaluate_node(child.id), child, concept)
+                    for child in children
+                ]
                 if op == "sum":
                     result = float(sum(child_values))
                 elif op == "avg":

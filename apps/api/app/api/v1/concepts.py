@@ -7,12 +7,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.users import current_active_user
+from app.core.config import settings
 from app.core.db import get_async_session
 from app.models.concept import Concept, ConceptKind
 from app.models.concept_dependency import ConceptDependency
 from app.models.concept_entry import ConceptEntry
 from app.models.concept_group_membership import ConceptGroupMembership
 from app.models.currency import Currency
+from app.models.fx_rate import FxRate
 from app.models.snapshot import Snapshot, SnapshotStatus
 from app.models.user import User
 from app.schemas.concept import (
@@ -232,9 +234,23 @@ async def evaluate_concept(
         if m.concept_id in concept_map:
             group_members.setdefault(m.group_id, []).append(concept_map[m.concept_id])
 
+    # Load latest FX rates for cross-currency evaluation
+    fx_result = await session.execute(
+        select(FxRate.quote_code, FxRate.rate, FxRate.as_of)
+        .where(FxRate.base_code == settings.fx_base_currency)
+        .order_by(FxRate.as_of.desc())
+    )
+    fx_rates: dict[str, float] = {}
+    for row in fx_result.all():
+        if row.quote_code not in fx_rates:
+            fx_rates[row.quote_code] = row.rate
+
     try:
         dependencies = extract_dependency_graph(concepts)
-        value = evaluate_concept_by_id(concept_id, concepts, group_members)
+        value = evaluate_concept_by_id(
+            concept_id, concepts, group_members,
+            fx_rates=fx_rates, base_currency=settings.fx_base_currency,
+        )
     except FormulaCycleError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

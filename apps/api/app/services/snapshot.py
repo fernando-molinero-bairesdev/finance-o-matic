@@ -5,10 +5,12 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.concept import Concept, ConceptCarryBehaviour, ConceptKind
 from app.models.concept_entry import ConceptEntry
 from app.models.concept_group_membership import ConceptGroupMembership
 from app.models.entity import Entity
+from app.models.fx_rate import FxRate
 from app.models.snapshot import Snapshot, SnapshotStatus, SnapshotTrigger
 from app.services.formula import FormulaEvaluationError, evaluate_concept_by_id
 
@@ -37,6 +39,20 @@ async def _get_prior_entry(
         query.order_by(Snapshot.date.desc(), Snapshot.id.desc()).limit(1)
     )
     return result.scalar_one_or_none()
+
+
+async def _load_fx_rates(session: AsyncSession) -> dict[str, float]:
+    """Return the most recent FX rates keyed by quote_code (base = settings.fx_base_currency)."""
+    result = await session.execute(
+        select(FxRate.quote_code, FxRate.rate, FxRate.as_of)
+        .where(FxRate.base_code == settings.fx_base_currency)
+        .order_by(FxRate.as_of.desc())
+    )
+    rates: dict[str, float] = {}
+    for row in result.all():
+        if row.quote_code not in rates:
+            rates[row.quote_code] = row.rate
+    return rates
 
 
 async def take_snapshot(
@@ -155,15 +171,47 @@ async def process_snapshot(
     entries = list(entries_result.scalars().all())
 
     # Build a map of concept_id → value from the snapshot's non-auto entries.
-    # The formula engine uses concept.literal_value for ConceptKind.value nodes, but
-    # the user fills values into snapshot entries (not the concept itself). We create
-    # lightweight proxy objects that override literal_value so the engine sees the
-    # snapshot-specific values instead of the global concept definition.
-    entry_value_map: dict[uuid.UUID, float] = {
-        e.concept_id: e.value
-        for e in entries
-        if e.carry_behaviour_used != ConceptCarryBehaviour.auto and e.value is not None
+    # For per-entity concepts (multiple entries with the same concept_id but different
+    # entity_ids), sum all entity values so formulas can reference them as a single scalar.
+    _raw: dict[uuid.UUID, list[float]] = {}
+    for e in entries:
+        if e.carry_behaviour_used != ConceptCarryBehaviour.auto and e.value is not None:
+            _raw.setdefault(e.concept_id, []).append(e.value)
+    entry_value_map: dict[uuid.UUID, float] = {cid: sum(vals) for cid, vals in _raw.items()}
+
+    # For value concepts not present in this snapshot, fall back to their most recent
+    # completed entry value so formulas that reference out-of-scope concepts can still
+    # evaluate correctly.
+    in_snapshot_ids = set(entry_value_map.keys()) | {
+        e.concept_id for e in entries if e.carry_behaviour_used == ConceptCarryBehaviour.auto
     }
+    needs_prior = [
+        c for c in all_concepts
+        if c.kind == ConceptKind.value
+        and c.id not in in_snapshot_ids
+        and c.literal_value is None
+    ]
+    if needs_prior:
+        prior_result = await session.execute(
+            select(ConceptEntry.concept_id, ConceptEntry.value, Snapshot.date, Snapshot.id)
+            .join(Snapshot, ConceptEntry.snapshot_id == Snapshot.id)
+            .where(
+                ConceptEntry.concept_id.in_([c.id for c in needs_prior]),
+                Snapshot.user_id == user_id,
+                Snapshot.status == SnapshotStatus.complete,
+                ConceptEntry.entity_id.is_(None),
+            )
+            .order_by(Snapshot.date.desc(), Snapshot.id.desc())
+        )
+        seen_prior: set[uuid.UUID] = set()
+        for row in prior_result.all():
+            if row.concept_id not in seen_prior:
+                seen_prior.add(row.concept_id)
+                if row.value is not None:
+                    entry_value_map[row.concept_id] = row.value
+
+    # Load the latest FX rates for cross-currency formula evaluation
+    fx_rates = await _load_fx_rates(session)
 
     def _patched_concepts() -> list:
         patched = []
@@ -177,6 +225,7 @@ async def process_snapshot(
                     literal_value=entry_val,
                     expression=c.expression,
                     aggregate_op=c.aggregate_op,
+                    currency_code=c.currency_code,
                 ))
             else:
                 patched.append(c)
@@ -186,7 +235,11 @@ async def process_snapshot(
         if entry.carry_behaviour_used == ConceptCarryBehaviour.auto:
             try:
                 entry.value = evaluate_concept_by_id(
-                    entry.concept_id, _patched_concepts(), group_members
+                    entry.concept_id,
+                    _patched_concepts(),
+                    group_members,
+                    fx_rates=fx_rates,
+                    base_currency=settings.fx_base_currency,
                 )
             except FormulaEvaluationError:
                 entry.value = None
