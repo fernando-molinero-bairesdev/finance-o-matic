@@ -25,8 +25,16 @@ export interface SnapshotRead {
   status: SnapshotStatus
 }
 
+export interface SnapshotFxRateRead {
+  base_code: string
+  quote_code: string
+  rate: number
+  as_of: string
+}
+
 export interface SnapshotDetail extends SnapshotRead {
   entries: ConceptEntryRead[]
+  fx_rates: SnapshotFxRateRead[]
 }
 
 export interface SnapshotCreate {

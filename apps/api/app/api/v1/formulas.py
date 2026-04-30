@@ -10,6 +10,7 @@ from app.auth.users import current_active_user
 from app.core.config import settings
 from app.core.db import get_async_session
 from app.models.concept import Concept, ConceptKind
+from app.models.concept_group_membership import ConceptGroupMembership
 from app.models.fx_rate import FxRate
 from app.models.user import User
 from app.services.formula import (
@@ -44,7 +45,7 @@ async def preview_formula(
         return FormulaPreviewOut(value=None, dependencies=[], error=str(exc))
 
     result = await session.execute(select(Concept).where(Concept.user_id == user.id))
-    concepts = result.scalars().all()
+    concepts = list(result.scalars().all())
     concept_by_name = {c.name: c for c in concepts}
 
     unknown = [name for name in sorted(dep_names) if name not in concept_by_name]
@@ -52,6 +53,18 @@ async def preview_formula(
         return FormulaPreviewOut(
             value=None, dependencies=[], error=f"Unknown concept: {unknown[0]}"
         )
+
+    # Build group_members so group concepts evaluate correctly
+    concept_map = {c.id: c for c in concepts}
+    mem_result = await session.execute(
+        select(ConceptGroupMembership).where(
+            ConceptGroupMembership.concept_id.in_(list(concept_map))
+        )
+    )
+    group_members: dict[uuid.UUID, list] = {}
+    for m in mem_result.scalars().all():
+        if m.concept_id in concept_map:
+            group_members.setdefault(m.group_id, []).append(concept_map[m.concept_id])
 
     fx_result = await session.execute(
         select(FxRate.quote_code, FxRate.rate, FxRate.as_of)
@@ -77,7 +90,8 @@ async def preview_formula(
     try:
         value = evaluate_concept_by_id(
             preview_id,
-            list(concepts) + [fake_concept],
+            concepts + [fake_concept],
+            group_members,
             fx_rates=fx_rates,
             base_currency=settings.fx_base_currency,
         )

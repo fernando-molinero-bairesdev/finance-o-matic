@@ -8,7 +8,7 @@ import {
   processSnapshot,
   completeSnapshot,
 } from '../../lib/snapshotsApi'
-import type { ConceptEntryRead, SnapshotStatus } from '../../lib/snapshotsApi'
+import type { ConceptEntryRead, SnapshotFxRateRead, SnapshotStatus } from '../../lib/snapshotsApi'
 import { getEntities } from '../../lib/entitiesApi'
 import type { EntityRead } from '../../lib/entitiesApi'
 import Badge from '../../components/ui/Badge'
@@ -123,6 +123,25 @@ function EntryRow({ entry, snapshotId, snapshotStatus, conceptNames, entityNames
   )
 }
 
+// ── FxRatesPanel ─────────────────────────────────────────────────────────────
+
+function FxRatesPanel({ rates }: { rates: SnapshotFxRateRead[] }) {
+  return (
+    <div className="px-4 py-2 border-t border-[var(--border)] bg-[var(--code-bg)]">
+      <p className="text-[10px] font-medium text-[var(--text)] mb-1">
+        Exchange rates used ({rates[0]?.as_of})
+      </p>
+      <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+        {rates.map((r) => (
+          <span key={r.quote_code} className="text-[10px] text-[var(--text)]">
+            1 {r.base_code} = {r.rate.toFixed(4)} {r.quote_code}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── SnapshotEntries ───────────────────────────────────────────────────────────
 
 interface SnapshotEntriesProps {
@@ -179,6 +198,10 @@ function SnapshotEntries({
         />
       ))}
 
+      {detail.data && detail.data.fx_rates.length > 0 && (
+        <FxRatesPanel rates={detail.data.fx_rates} />
+      )}
+
       {snapshotStatus === 'open' && detail.data && (
         <div className="px-4 py-3 flex items-center justify-between border-t border-[var(--border)]">
           <p className="text-xs text-[var(--text)]">
@@ -195,9 +218,14 @@ function SnapshotEntries({
           <p className="text-xs text-[var(--text)]">
             Review the values. When correct, lock the snapshot.
           </p>
-          <Button variant="primary" size="sm" disabled={isCompleting} onClick={onComplete}>
-            {isCompleting ? 'Locking…' : 'Lock & Complete'}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" disabled={isProcessing} onClick={onProcess}>
+              {isProcessing ? 'Processing…' : 'Re-process'}
+            </Button>
+            <Button variant="primary" size="sm" disabled={isCompleting} onClick={onComplete}>
+              {isCompleting ? 'Locking…' : 'Lock & Complete'}
+            </Button>
+          </div>
         </div>
       )}
     </div>

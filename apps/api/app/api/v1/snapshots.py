@@ -9,12 +9,14 @@ from app.core.db import get_async_session
 from app.models.concept_entry import ConceptEntry
 from app.models.entity import Entity
 from app.models.snapshot import Snapshot, SnapshotStatus
+from app.models.snapshot_fx_rate import SnapshotFxRate
 from app.models.user import User
 from app.schemas.snapshot import (
     ConceptEntryRead,
     ConceptEntryResolve,
     SnapshotCreate,
     SnapshotDetail,
+    SnapshotFxRateRead,
     SnapshotListResponse,
     SnapshotRead,
 )
@@ -40,9 +42,18 @@ async def _load_detail(session: AsyncSession, snapshot: Snapshot) -> SnapshotDet
         select(ConceptEntry).where(ConceptEntry.snapshot_id == snapshot.id)
     )
     entries = list(entries_result.scalars().all())
+
+    fx_result = await session.execute(
+        select(SnapshotFxRate)
+        .where(SnapshotFxRate.snapshot_id == snapshot.id)
+        .order_by(SnapshotFxRate.quote_code)
+    )
+    fx_rates = list(fx_result.scalars().all())
+
     return SnapshotDetail(
         **SnapshotRead.model_validate(snapshot).model_dump(),
         entries=[ConceptEntryRead.model_validate(e) for e in entries],
+        fx_rates=[SnapshotFxRateRead.model_validate(r) for r in fx_rates],
     )
 
 

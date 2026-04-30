@@ -2,7 +2,7 @@ import types
 import uuid
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -12,6 +12,7 @@ from app.models.concept_group_membership import ConceptGroupMembership
 from app.models.entity import Entity
 from app.models.fx_rate import FxRate
 from app.models.snapshot import Snapshot, SnapshotStatus, SnapshotTrigger
+from app.models.snapshot_fx_rate import SnapshotFxRate
 from app.services.formula import FormulaEvaluationError, evaluate_concept_by_id
 
 
@@ -41,8 +42,8 @@ async def _get_prior_entry(
     return result.scalar_one_or_none()
 
 
-async def _load_fx_rates(session: AsyncSession) -> dict[str, float]:
-    """Return the most recent FX rates keyed by quote_code (base = settings.fx_base_currency)."""
+async def _load_global_fx_rates(session: AsyncSession) -> dict[str, float]:
+    """Load the most recent FX rates from the global FxRate table."""
     result = await session.execute(
         select(FxRate.quote_code, FxRate.rate, FxRate.as_of)
         .where(FxRate.base_code == settings.fx_base_currency)
@@ -53,6 +54,41 @@ async def _load_fx_rates(session: AsyncSession) -> dict[str, float]:
         if row.quote_code not in rates:
             rates[row.quote_code] = row.rate
     return rates
+
+
+async def _load_snapshot_fx_rates(
+    session: AsyncSession, snapshot_id: uuid.UUID
+) -> dict[str, float] | None:
+    """Return the FX rates stored for this snapshot, or None if none saved yet."""
+    result = await session.execute(
+        select(SnapshotFxRate).where(SnapshotFxRate.snapshot_id == snapshot_id)
+    )
+    rows = result.scalars().all()
+    if not rows:
+        return None
+    return {row.quote_code: row.rate for row in rows}
+
+
+async def _save_snapshot_fx_rates(
+    session: AsyncSession,
+    snapshot_id: uuid.UUID,
+    rates: dict[str, float],
+    as_of: date,
+) -> None:
+    """Persist the FX rates used for a snapshot (idempotent — replaces on re-process)."""
+    await session.execute(
+        delete(SnapshotFxRate).where(SnapshotFxRate.snapshot_id == snapshot_id)
+    )
+    session.add_all([
+        SnapshotFxRate(
+            snapshot_id=snapshot_id,
+            base_code=settings.fx_base_currency,
+            quote_code=quote_code,
+            rate=rate,
+            as_of=as_of,
+        )
+        for quote_code, rate in rates.items()
+    ])
 
 
 async def take_snapshot(
@@ -210,8 +246,12 @@ async def process_snapshot(
                 if row.value is not None:
                     entry_value_map[row.concept_id] = row.value
 
-    # Load the latest FX rates for cross-currency formula evaluation
-    fx_rates = await _load_fx_rates(session)
+    # Load FX rates: use snapshot-stored rates if already captured (re-process case),
+    # otherwise fetch from global table and save them to the snapshot for reproducibility.
+    fx_rates = await _load_snapshot_fx_rates(session, snapshot.id)
+    if fx_rates is None:
+        fx_rates = await _load_global_fx_rates(session)
+        await _save_snapshot_fx_rates(session, snapshot.id, fx_rates, snapshot.date)
 
     def _patched_concepts() -> list:
         patched = []

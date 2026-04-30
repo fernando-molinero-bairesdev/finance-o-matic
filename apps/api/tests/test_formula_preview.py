@@ -125,6 +125,47 @@ async def test_preview_requires_auth(client: AsyncClient, seeded_currencies) -> 
 
 
 @pytest.mark.asyncio
+async def test_preview_formula_referencing_group(client: AsyncClient, seeded_currencies) -> None:
+    """A formula that references a group concept should evaluate using the group's aggregated value."""
+    token = await _register_and_login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Create two value concepts and a group that sums them
+    for name, value in [("rent", 1000.0), ("utilities", 200.0)]:
+        await client.post(
+            "/api/v1/concepts",
+            json={"name": name, "kind": "value", "currency_code": "USD", "literal_value": value},
+            headers=headers,
+        )
+    grp = await client.post(
+        "/api/v1/concepts",
+        json={"name": "expenses", "kind": "group", "currency_code": "USD", "aggregate_op": "sum"},
+        headers=headers,
+    )
+    group_id = grp.json()["id"]
+
+    # Add both value concepts as members of the group
+    for name in ("rent", "utilities"):
+        concepts_resp = await client.get("/api/v1/concepts", headers=headers)
+        member = next(c for c in concepts_resp.json()["items"] if c["name"] == name)
+        await client.put(
+            f"/api/v1/concepts/{member['id']}",
+            json={**member, "group_ids": list({*member["group_ids"], group_id})},
+            headers=headers,
+        )
+
+    resp = await client.post(
+        "/api/v1/formulas/preview",
+        json={"expression": "expenses * 12"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["value"] == pytest.approx((1000.0 + 200.0) * 12)
+    assert body["error"] is None
+
+
+@pytest.mark.asyncio
 async def test_preview_multiple_dependencies(client: AsyncClient, seeded_currencies) -> None:
     token = await _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}

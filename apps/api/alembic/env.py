@@ -21,6 +21,11 @@ import app.models.entity_property_value  # noqa: F401
 import app.models.entity  # noqa: F401
 import app.models.snapshot  # noqa: F401
 import app.models.concept_entry  # noqa: F401
+import app.models.concept_group_membership  # noqa: F401
+import app.models.process  # noqa: F401
+import app.models.process_schedule  # noqa: F401
+import app.models.process_concept  # noqa: F401
+import app.models.snapshot_fx_rate  # noqa: F401
 
 config = context.config
 

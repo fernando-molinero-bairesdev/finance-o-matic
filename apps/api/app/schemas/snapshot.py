@@ -7,6 +7,15 @@ from app.models.concept import ConceptCarryBehaviour
 from app.models.snapshot import SnapshotStatus, SnapshotTrigger
 
 
+class SnapshotFxRateRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    base_code: str
+    quote_code: str
+    rate: float
+    as_of: date
+
+
 class SnapshotCreate(BaseModel):
     date: date
     label: str | None = None
@@ -45,6 +54,7 @@ class SnapshotRead(BaseModel):
 
 class SnapshotDetail(SnapshotRead):
     entries: list[ConceptEntryRead]
+    fx_rates: list[SnapshotFxRateRead]
 
 
 class SnapshotListResponse(BaseModel):
