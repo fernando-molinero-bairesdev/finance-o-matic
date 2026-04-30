@@ -58,7 +58,7 @@ pnpm db:downgrade                      # Roll back one migration
 cd apps/api && node scripts/run-python.cjs -m alembic revision --autogenerate -m "description"
 ```
 
-> **Alembic env.py caveat:** `apps/api/alembic/env.py` must import every model file so autogenerate detects the full schema. If a model is missing from the import list, autogenerate will produce spurious DROP TABLE operations. Currently imports: user, currency, fx_rate, concept, concept_dependency, entity_type, entity_property_def, entity_property_value, entity, snapshot, concept_entry. Add any new model there.
+> **Alembic env.py caveat:** `apps/api/alembic/env.py` must import every model file so autogenerate detects the full schema. If a model is missing from the import list, autogenerate will produce spurious DROP TABLE operations. Currently imports: user, currency, fx_rate, concept, concept_dependency, entity_type, entity_property_def, entity_property_value, entity, snapshot, concept_entry, concept_group_membership. Add any new model there.
 
 ### Frontend-specific
 
@@ -107,7 +107,8 @@ Copy `.env.example` to `.env`. Key variables:
 **Database:** `app/core/db.py` — SQLAlchemy 2.0 async engine + session factory. All models inherit from a shared `Base`. Sessions are provided via a `get_async_session` dependency. The same codebase switches between SQLite (local) and Postgres (production) via `DATABASE_URL`.
 
 **Models:**
-- `Concept` — Core entity. `ConceptKind`: `value` (literal), `formula` (references others), `group` (aggregates members), `aux` (auxiliary/reference-only). `ConceptCarryBehaviour`: `auto` (recomputed each snapshot), `copy` (carry forward), `copy_or_manual` (copy if prior exists, else prompt for input). Optional `entity_type_id` FK: when set, the snapshot service creates one `ConceptEntry` per entity of that type instead of one global entry.
+- `Concept` — Core entity. `ConceptKind`: `value` (literal), `formula` (references others), `group` (aggregates members), `aux` (auxiliary/reference-only). `ConceptCarryBehaviour`: `auto` (recomputed each snapshot), `copy` (carry forward), `copy_or_manual` (copy if prior exists, else prompt for input). Optional `entity_type_id` FK: when set, the snapshot service creates one `ConceptEntry` per entity of that type instead of one global entry. `group_ids: list[UUID]` on all schemas reflects current memberships (no `parent_group_id` column on the table).
+- `ConceptGroupMembership` — Junction table (`concept_id`, `group_id`; both FK to `concepts.id`). Unique constraint on the pair; cascade delete on both sides. Not mapped as an ORM relationship — queried dynamically in services via `ConceptGroupMembership` model rows.
 - `ConceptDependency` — Tracks edges in the concept DAG for visualization and cycle detection.
 - `Currency` / `FxRate` — Reference tables for multi-currency support. Currencies are seeded via `POST /api/v1/init/currencies` (idempotent; no auth required).
 - `Snapshot` — One snapshot run: `date`, `label`, `trigger` (`manual|scheduled`), `status` (`open|processed|complete`). Status machine: **open** (entries editable) → **processed** (formulas evaluated, review) → **complete** (locked).
@@ -123,7 +124,7 @@ Copy `.env.example` to `.env`. Key variables:
 - `parse_formula()` — Validates syntax; whitelisted operators and functions (`sum`, `min`, `max`, `if_`).
 - `extract_reference_names()` — Extracts concept name dependencies from a formula string.
 - `detect_cycles()` — DFS cycle detection on the concept dependency graph.
-- `evaluate_concept_by_id()` — Recursive evaluation with memoization. Groups find their children by filtering `concept_list` for `c.parent_group_id == node_id`.
+- `evaluate_concept_by_id()` — Recursive evaluation with memoization. Accepts a `group_members: dict[UUID, list] | None` param; groups look up their members from this dict (built from `ConceptGroupMembership` rows by the caller at snapshot/evaluate time).
 
 **Scheduler (`app/core/scheduler.py` + `app/services/scheduled_jobs.py`):** APScheduler `AsyncIOScheduler` started in the FastAPI lifespan (disabled in tests via `SCHEDULED_JOBS_ENABLED=False`). Two jobs:
 - `run_due_processes` — 00:05 daily; triggers snapshots for due active processes.
@@ -162,7 +163,7 @@ When a concept has `entity_type_id` set, `take_snapshot()` creates one `ConceptE
 **Routing:** React Router v7. Protected routes are grouped under an `AppLayout` shell with a sidebar nav. Route groups:
 - `/` — Dashboard (active processes, portfolio trend chart, recent snapshots)
 - `/reports` — Full snapshot list + take-snapshot workflow
-- `/configuration/concepts` — Concept CRUD with group picker and entity-type binding
+- `/configuration/concepts` — Concept CRUD with tab switcher: "List" (form-based CRUD via `ConceptForm`, includes multi-checkbox "Member of groups" section) and "Groups" (`ConceptGroupBoard` drag-and-drop board — non-group concept pool on the left, one column per group in the center, inline new-group creation, search filter; uses `@dnd-kit/core`)
 - `/configuration/currencies` — Currency list, inline edit, create form, "Load standard currencies" init button
 - `/configuration/processes` — Process CRUD
 - `/configuration/entity-types` — EntityType + property management
@@ -198,9 +199,10 @@ When a concept has `entity_type_id` set, `take_snapshot()` creates one `ConceptE
 - **Entity system** — EntityType/EntityPropertyDef/Entity models, full CRUD, per-entity concept entries
 - **Currency CRUD** — Full create/edit/delete UI, `POST /init/currencies` endpoint
 - **Responsive UI** — AppLayout with sidebar nav, Tailwind CSS v4, shared UI primitives
+- **Many-to-many group membership** — `concept_group_memberships` junction table (migration 0009); `group_ids: list[UUID]` on all Concept schemas; `group_members` dict param in formula engine; drag-and-drop `ConceptGroupBoard` + multi-checkbox UI in `ConceptForm`; `ConceptsPage` tab switcher between List and Groups views.
 
 **In progress / upcoming:**
-- **Many-to-many group membership** — Replace single `parent_group_id` FK with a `concept_group_memberships` junction table so a concept can belong to multiple groups simultaneously. Requires engine change (`group_members` dict param), schema change (`group_ids: list[UUID]`), migration, and multi-checkbox UI in ConceptForm.
+- _(nothing currently planned — add new milestones here)_
 
 ## Testing Strategy
 
