@@ -37,6 +37,13 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/reports', label: 'Reports' },
     ],
   },
+  {
+    label: 'Tools',
+    prefix: '/formula-playground',
+    items: [
+      { to: '/formula-playground', label: 'Formula Playground' },
+    ],
+  },
 ]
 
 const primaryClass = (isActive: boolean) =>

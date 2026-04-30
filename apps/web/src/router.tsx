@@ -12,6 +12,7 @@ import EntityTypesPage  from './pages/EntityTypesPage'
 import EntitiesPage     from './pages/EntitiesPage'
 import SnapshotsPage    from './pages/SnapshotsPage'
 import ReportsPage      from './pages/ReportsPage'
+import FormulaPlayground from './pages/FormulaPlayground'
 
 export default function AppRouter() {
   return (
@@ -37,6 +38,9 @@ export default function AppRouter() {
 
               {/* Reports */}
               <Route path="/reports" element={<ReportsPage />} />
+
+              {/* Tools */}
+              <Route path="/formula-playground" element={<FormulaPlayground />} />
             </Route>
           </Route>
 

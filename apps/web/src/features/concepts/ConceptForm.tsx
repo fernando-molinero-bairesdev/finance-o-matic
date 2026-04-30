@@ -6,6 +6,7 @@ import type { ConceptCreate, ConceptUpdate, ConceptKind, ConceptRead } from '../
 import { getEntityTypes } from '../../lib/entitiesApi'
 import Button from '../../components/ui/Button'
 import FormField, { inputClass, selectClass } from '../../components/ui/FormField'
+import FormulaEditor from '../formulas/FormulaEditor'
 
 interface Props {
   concept?: ConceptRead
@@ -172,12 +173,10 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
 
       {(kind === 'formula' || kind === 'aux') && (
         <FormField id="concept-expression" label="Expression">
-          <input
-            id="concept-expression"
-            aria-label="Expression"
-            value={expression}
-            onChange={(e) => setExpression(e.target.value)}
-            className={inputClass}
+          <FormulaEditor
+            expression={expression}
+            onChange={setExpression}
+            excludeConceptId={concept?.id}
           />
         </FormField>
       )}
