@@ -57,7 +57,8 @@
       "Bash(pnpm --filter @finance-o-matic/web exec vitest run src/pages/ReportsPage.test.tsx)",
       "Bash(pnpm --filter @finance-o-matic/api test -- tests/test_formula_engine.py::test_formula_converts_cross_currency_reference tests/test_process_snapshots.py::test_process_snapshot_returns_201 -v)",
       "Bash(pnpm --filter @finance-o-matic/api test -- tests/test_formula_engine.py::test_formula_converts_cross_currency_reference -v)",
-      "mcp__Claude_Preview__preview_start"
+      "mcp__Claude_Preview__preview_start",
+      "Bash(pnpm --filter @finance-o-matic/web exec tsc --noEmit)"
     ]
   }
 }

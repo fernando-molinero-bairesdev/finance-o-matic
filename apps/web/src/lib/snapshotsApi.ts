@@ -19,6 +19,7 @@ export interface ConceptEntryRead {
 export interface SnapshotRead {
   id: string
   user_id: string
+  process_id: string | null
   date: string
   label: string | null
   trigger: SnapshotTrigger
@@ -79,6 +80,12 @@ export async function updateEntry(
       body: JSON.stringify({ value, entity_id: entityId ?? null }),
     },
   )
+}
+
+export async function carryForward(snapshotId: string): Promise<SnapshotDetail> {
+  return apiFetch<SnapshotDetail>(`/api/v1/snapshots/${snapshotId}/carry-forward`, {
+    method: 'POST',
+  })
 }
 
 /** @deprecated use updateEntry */

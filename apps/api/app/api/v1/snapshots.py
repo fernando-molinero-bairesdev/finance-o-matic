@@ -20,7 +20,7 @@ from app.schemas.snapshot import (
     SnapshotListResponse,
     SnapshotRead,
 )
-from app.services.snapshot import process_snapshot, take_snapshot
+from app.services.snapshot import carry_forward_snapshot, process_snapshot, take_snapshot
 
 router = APIRouter(prefix="/snapshots", tags=["snapshots"])
 
@@ -127,6 +127,22 @@ async def complete_snapshot(
     await session.commit()
     await session.refresh(snapshot)
     return SnapshotRead.model_validate(snapshot)
+
+
+@router.post("/{snapshot_id}/carry-forward", response_model=SnapshotDetail)
+async def carry_forward(
+    snapshot_id: uuid.UUID,
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> SnapshotDetail:
+    snapshot = await _get_owned_snapshot_or_404(session, snapshot_id, current_user.id)
+    if snapshot.status == SnapshotStatus.complete:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot modify a completed snapshot.",
+        )
+    await carry_forward_snapshot(session=session, snapshot=snapshot, user_id=current_user.id)
+    return await _load_detail(session, snapshot)
 
 
 @router.patch(

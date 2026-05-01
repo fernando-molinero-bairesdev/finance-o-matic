@@ -58,7 +58,7 @@ pnpm db:downgrade                      # Roll back one migration
 cd apps/api && node scripts/run-python.cjs -m alembic revision --autogenerate -m "description"
 ```
 
-> **Alembic env.py caveat:** `apps/api/alembic/env.py` must import every model file so autogenerate detects the full schema. If a model is missing from the import list, autogenerate will produce spurious DROP TABLE operations. Currently imports: user, currency, fx_rate, concept, concept_dependency, entity_type, entity_property_def, entity_property_value, entity, snapshot, concept_entry, concept_group_membership. Add any new model there.
+> **Alembic env.py caveat:** `apps/api/alembic/env.py` must import every model file so autogenerate detects the full schema. If a model is missing from the import list, autogenerate will produce spurious DROP TABLE operations. Currently imports: user, currency, fx_rate, concept, concept_dependency, entity_type, entity_property_def, entity_property_value, entity, snapshot, concept_entry, concept_group_membership, snapshot_fx_rate, process_concept. Add any new model there.
 
 ### Frontend-specific
 
@@ -119,6 +119,8 @@ Copy `.env.example` to `.env`. Key variables:
 - `EntityPropertyDef` — Typed property definition on an EntityType (`decimal|string|date|entity_ref`; cardinality `one|many`).
 - `EntityPropertyValue` — Concrete value for one property on one Entity instance.
 - `Entity` — A named instance of an EntityType (e.g. "Chase Checking" of type Account). Unique per `(user_id, entity_type_id, name)`. Seeded via `POST /api/v1/init/entities`.
+- `SnapshotFxRate` — FX rates frozen at snapshot time (migration 0010). Stores `snapshot_id`, `currency_code`, `rate_to_base` so historical snapshots can be replayed with the exchange rates that were live when they were taken.
+- `ProcessConcept` — Junction table for `Process` ↔ `Concept` many-to-many scope (`process_id`, `concept_id`). Used when a process has `concept_scope = "selected"`.
 
 **Formula Engine (`app/services/formula/engine.py`):** The most critical service. Uses Python's `ast` module + `simpleeval` for safe, sandboxed evaluation — no `eval()`. Key functions:
 - `parse_formula()` — Validates syntax; whitelisted operators and functions (`sum`, `min`, `max`, `if_`).
@@ -131,15 +133,15 @@ Copy `.env.example` to `.env`. Key variables:
 - `fetch_fx_rates` — 06:00 daily; fetches from `https://api.frankfurter.app/latest?from={FX_BASE_CURRENCY}` via `httpx`, upserts `FxRate` rows.
 
 **API routes** (all under `/api/v1/`):
-- `concepts.py` — full Concept CRUD + `POST /{id}/evaluate`, `GET /{id}/history`, `GET /history/batch?ids=...` (M8)
+- `concepts.py` — full Concept CRUD + `POST /{id}/evaluate`, `GET /{id}/history`, `GET /history/batch?ids=...`
 - `currencies.py` — `GET` (no auth), `POST`, `PUT /{code}`, `DELETE /{code}` (auth required for mutations; DELETE returns 409 if referenced by concepts)
 - `entities.py` — EntityType CRUD + property defs + Entity CRUD + property values
-- `snapshots.py` — `POST /snapshots`, `GET /snapshots`, `GET /snapshots/{id}`, `POST /snapshots/{id}/process`, `POST /snapshots/{id}/complete`, `PATCH /snapshots/{id}/entries/{entry_id}`, `POST /snapshots/{id}/carry-forward` (M10)
+- `snapshots.py` — `POST /snapshots`, `GET /snapshots`, `GET /snapshots/{id}`, `POST /snapshots/{id}/process`, `POST /snapshots/{id}/complete`, `PATCH /snapshots/{id}/entries/{entry_id}`, `POST /snapshots/{id}/carry-forward`
 - `processes.py` — full Process CRUD + `POST /{id}/snapshots` (ad-hoc snapshot trigger)
 - `init.py` — idempotent seed endpoints: `POST /init/currencies` (no auth), `POST /init/concepts`, `POST /init/entity-types`, `POST /init/entities`
-- `formulas.py` _(M7)_ — `POST /formulas/preview` (evaluate a formula string against live concept values without saving; returns `{ value, dependencies, error? }`)
-- `export.py` _(M9)_ — `GET /export/concepts`, `GET /export/processes` (init-compatible JSON by name)
-- `import.py` _(M9)_ — `POST /import/concepts`, `POST /import/processes` (bulk upsert; returns `{ created, updated, skipped, errors }`)
+- `formulas.py` — `POST /formulas/preview` (evaluate a formula string against live concept values without saving; returns `{ value, dependencies, error? }`)
+- `export.py` — `GET /export/concepts`, `GET /export/processes` (portable name-based JSON)
+- `import_.py` — `POST /import/concepts`, `POST /import/processes` (bulk upsert; returns `{ created, updated, skipped, errors }`)
 
 ### Snapshot State Machine
 
@@ -165,14 +167,14 @@ When a concept has `entity_type_id` set, `take_snapshot()` creates one `ConceptE
 
 **Routing:** React Router v7. Protected routes are grouped under an `AppLayout` shell with a sidebar nav. Route groups:
 - `/` — Dashboard (active processes, portfolio trend chart, recent snapshots)
-- `/reports` — Full snapshot list + take-snapshot workflow; multi-concept chart + snapshot detail drawer (M8)
-- `/data-entry` _(M10)_ — Snapshot entry sheet (configurable row list) and entity data editor (entity × concept matrix)
-- `/formula-playground` _(M7)_ — Standalone formula editor for testing formulas against live concept values
+- `/reports` — Full snapshot list + take-snapshot workflow; multi-concept chart + snapshot detail drawer
+- `/data-entry` — Snapshot entry sheet (configurable row list) and entity data editor (entity × concept matrix)
+- `/formula-playground` — Standalone formula editor for testing formulas against live concept values
 - `/configuration/concepts` — Concept CRUD with tab switcher: "List" (form-based CRUD via `ConceptForm`, includes multi-checkbox "Member of groups" section and embedded formula editor with live test) and "Groups" (`ConceptGroupBoard` drag-and-drop board — non-group concept pool on the left, one column per group in the center, inline new-group creation, search filter; uses `@dnd-kit/core`)
 - `/configuration/currencies` — Currency list, inline edit, create form, "Load standard currencies" init button
 - `/configuration/processes` — Process CRUD
 - `/configuration/entity-types` — EntityType + property management
-- `/configuration/export` _(M9)_ — Export current concepts + processes as JSON; import from file upload or paste
+- `/configuration/export` — Export current concepts + processes as JSON; import from file upload or paste
 - `/entities` — Entity instances with expandable property editors
 
 **API modules** in `src/lib/`:
@@ -206,13 +208,11 @@ When a concept has `entity_type_id` set, `take_snapshot()` creates one `ConceptE
 - **Currency CRUD** — Full create/edit/delete UI, `POST /init/currencies` endpoint
 - **Responsive UI** — AppLayout with sidebar nav, Tailwind CSS v4, shared UI primitives
 - **Many-to-many group membership** — `concept_group_memberships` junction table (migration 0009); `group_ids: list[UUID]` on all Concept schemas; `group_members` dict param in formula engine; drag-and-drop `ConceptGroupBoard` + multi-checkbox UI in `ConceptForm`; `ConceptsPage` tab switcher between List and Groups views.
-
-**In progress / upcoming:**
-
-- **M7 — Formula Maker & UI Component Foundations** — New `POST /api/v1/formulas/preview` endpoint (evaluate a formula string without saving); `ConceptPicker` + `FormulaEditor` shared components; formula editor embedded in `ConceptForm` (concept name picker sidebar + live "Test" panel); standalone `/formula-playground` page.
-- **M8 — Dynamic Multi-Concept Reports** — `GET /api/v1/concepts/history/batch?ids=...` for efficient multi-concept history fetch; `MultiConceptChart` (multiple Recharts lines, legend, hover tooltip); `ReportsPage` overhauled with multi-select concept picker, date-range filter, and snapshot-detail side drawer.
-- **M9 — Configuration Export & Import** — `GET /api/v1/export/concepts` + `GET /api/v1/export/processes` (init-compatible JSON by name, portable across accounts); `POST /api/v1/import/concepts` + `POST /api/v1/import/processes` (bulk upsert, returns created/updated/skipped/errors); export preview modal + download; import modal with file upload or JSON paste.
-- **M10 — Configurable Data Entry** — (a) `SnapshotEntrySheet`: configurable row list (per-process layout in localStorage), inline value editing, "Fill from carry" batch action (`POST /snapshots/{id}/carry-forward`); (b) `EntityDataEditor`: matrix view (entities × entity-bound concepts) for inline editing of an open snapshot.
+- **M7 — Formula Maker & UI Component Foundations** — `POST /api/v1/formulas/preview` endpoint; `ConceptPicker` + `FormulaEditor` shared components embedded in `ConceptForm` (concept name picker sidebar + live "Test" panel); standalone `/formula-playground` page; all tests passing.
+- **M8 — Dynamic Multi-Concept Reports** — `GET /api/v1/concepts/history/batch?ids=...`; `MultiConceptChart` (multiple Recharts lines, legend, hover tooltip); `ReportsPage` with multi-select concept picker, date-range filter, snapshot-detail side drawer; all tests passing.
+- **Snapshot FX rate capture** — `SnapshotFxRate` model + migration 0010; FX rates frozen at snapshot time; `test_snapshot_fx_rates.py`.
+- **M9 — Configuration Export & Import** — `GET /api/v1/export/concepts` + `GET /api/v1/export/processes` (portable name-based JSON); `POST /api/v1/import/concepts` + `POST /api/v1/import/processes` (bulk upsert, returns created/updated/skipped/errors); `/configuration/export` page with download buttons + file-upload/paste import UI; all tests passing.
+- **M10 — Configurable Data Entry** — `POST /snapshots/{id}/carry-forward` batch fills pending copy_or_manual entries from prior snapshot; `SnapshotEntrySheet` (configurable row list with localStorage persistence per process, inline value editing, "Fill from carry" button); `EntityDataEditor` (entity × entity-bound-concept matrix with inline editing for open snapshots, read-only for complete); `/data-entry` page; all tests passing.
 
 ## Testing Strategy
 
@@ -233,11 +233,12 @@ All new features from M3 onward are developed TDD: tests written first (RED), th
   - `test_fx_service.py` — `fetch_fx_rates` job (httpx mocked with async context manager)
   - `test_snapshot_per_entity.py` — per-entity concept entries, entity-scoped carry, `POST /init/entities`
   - `test_snapshot_workflow.py` — full open→process→complete state machine
-  - `test_formula_preview.py` _(M7)_ — `POST /formulas/preview`: valid formulas, unknown concept names, cycle errors, auth
-  - `test_concept_history_batch.py` _(M8)_ — `GET /concepts/history/batch`: multi-id fetch, missing ids, auth
-  - `test_export.py` _(M9)_ — export concepts + processes; roundtrip (export → import → same set)
-  - `test_import.py` _(M9)_ — bulk upsert, idempotency, validation errors, unknown references
-  - `test_snapshot_carry_forward.py` _(M10)_ — `POST /snapshots/{id}/carry-forward` batch fills pending entries
+  - `test_formula_preview.py` — `POST /formulas/preview`: valid formulas, unknown concept names, cycle errors, auth
+  - `test_concept_history_batch.py` — `GET /concepts/history/batch`: multi-id fetch, missing ids, auth
+  - `test_snapshot_fx_rates.py` — FX rates captured and stored at snapshot time
+  - `test_export.py` — export concepts + processes; roundtrip (export → import → same set)
+  - `test_import.py` — bulk upsert, idempotency, validation errors, unknown references
+  - `test_snapshot_carry_forward.py` — `POST /snapshots/{id}/carry-forward` batch fills pending entries
 
 - **Frontend:** Vitest + React Testing Library with jsdom.
   - `features/auth/auth.test.tsx` — auth flows and route guards
@@ -248,9 +249,9 @@ All new features from M3 onward are developed TDD: tests written first (RED), th
   - `features/processes/ProcessList.test.tsx` — edit inline, active toggle, ad-hoc snapshot
   - `lib/conceptsApi.test.ts` — API client unit tests (imports `getCurrencies` via re-export from `currenciesApi`)
   - `pages/DashboardPage.test.tsx` — dashboard integration
-  - `features/formulas/FormulaEditor.test.tsx` _(M7)_ — concept picker insertion, operator quick-insert, live test panel
-  - `pages/FormulaPlayground.test.tsx` _(M7)_ — standalone playground page
-  - `features/charts/MultiConceptChart.test.tsx` _(M8)_ — multi-line chart rendering, legend, tooltip
-  - `pages/ReportsPage.test.tsx` _(M8)_ — concept multi-select, date range filter, snapshot detail drawer
-  - `features/snapshots/SnapshotEntrySheet.test.tsx` _(M10)_ — configurable rows, inline edit, carry-forward button
-  - `features/entities/EntityDataEditor.test.tsx` _(M10)_ — entity × concept matrix, open/read-only modes
+  - `features/formulas/FormulaEditor.test.tsx` — concept picker insertion, operator quick-insert, live test panel
+  - `pages/FormulaPlayground.test.tsx` — standalone playground page
+  - `features/charts/MultiConceptChart.test.tsx` — multi-line chart rendering, legend, tooltip
+  - `pages/ReportsPage.test.tsx` — concept multi-select, date range filter, snapshot detail drawer
+  - `features/snapshots/SnapshotEntrySheet.test.tsx` — configurable rows, inline edit, carry-forward button
+  - `features/entities/EntityDataEditor.test.tsx` — entity × concept matrix, open/read-only modes

@@ -13,6 +13,8 @@ import EntitiesPage     from './pages/EntitiesPage'
 import SnapshotsPage    from './pages/SnapshotsPage'
 import ReportsPage      from './pages/ReportsPage'
 import FormulaPlayground from './pages/FormulaPlayground'
+import ExportPage from './pages/ExportPage'
+import DataEntryPage from './pages/DataEntryPage'
 
 export default function AppRouter() {
   return (
@@ -29,9 +31,11 @@ export default function AppRouter() {
               <Route path="/configuration/concepts"     element={<ConceptsPage />} />
               <Route path="/configuration/processes"    element={<ProcessesPage />} />
               <Route path="/configuration/entity-types" element={<EntityTypesPage />} />
+              <Route path="/configuration/export" element={<ExportPage />} />
 
               {/* Data */}
               <Route path="/data/entities" element={<EntitiesPage />} />
+              <Route path="/data-entry" element={<DataEntryPage />} />
 
               {/* Processes */}
               <Route path="/processes/snapshots" element={<SnapshotsPage />} />

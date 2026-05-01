@@ -291,3 +291,32 @@ async def process_snapshot(
     await session.commit()
     await session.refresh(snapshot)
     return snapshot
+
+
+async def carry_forward_snapshot(
+    session: AsyncSession,
+    snapshot: Snapshot,
+    user_id: uuid.UUID,
+) -> int:
+    """Fill null values for non-auto entries from prior completed snapshots.
+
+    Returns the number of entries filled.
+    """
+    entries_result = await session.execute(
+        select(ConceptEntry).where(ConceptEntry.snapshot_id == snapshot.id)
+    )
+    entries = list(entries_result.scalars().all())
+
+    filled = 0
+    for entry in entries:
+        if entry.carry_behaviour_used == ConceptCarryBehaviour.auto:
+            continue
+        if entry.value is not None:
+            continue
+        prior = await _get_prior_entry(session, user_id, entry.concept_id, entry.entity_id)
+        if prior is not None and prior.value is not None:
+            entry.value = prior.value
+            filled += 1
+
+    await session.commit()
+    return filled

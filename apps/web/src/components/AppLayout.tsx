@@ -14,6 +14,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/configuration/concepts',      label: 'Concepts' },
       { to: '/configuration/processes',     label: 'Processes' },
       { to: '/configuration/entity-types',  label: 'Entity Types' },
+      { to: '/configuration/export',        label: 'Export / Import' },
     ],
   },
   {
@@ -21,6 +22,13 @@ const NAV_GROUPS: NavGroup[] = [
     prefix: '/data',
     items: [
       { to: '/data/entities', label: 'Entities' },
+    ],
+  },
+  {
+    label: 'Data Entry',
+    prefix: '/data-entry',
+    items: [
+      { to: '/data-entry', label: 'Data Entry' },
     ],
   },
   {
