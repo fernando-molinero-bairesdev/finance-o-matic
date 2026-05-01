@@ -281,6 +281,57 @@ async def evaluate_concept(
     )
 
 
+@router.get("/history/batch", response_model=dict[str, list[ConceptHistoryPoint]])
+async def get_concept_history_batch(
+    ids: str = "",
+    current_user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> dict[str, list[ConceptHistoryPoint]]:
+    if not ids:
+        return {}
+
+    requested: list[uuid.UUID] = []
+    for raw in ids.split(","):
+        raw = raw.strip()
+        try:
+            requested.append(uuid.UUID(raw))
+        except ValueError:
+            pass
+
+    if not requested:
+        return {}
+
+    result = await session.execute(
+        select(
+            ConceptEntry.concept_id,
+            ConceptEntry.snapshot_id,
+            Snapshot.date,
+            ConceptEntry.value,
+            ConceptEntry.currency_code,
+        )
+        .join(Snapshot, ConceptEntry.snapshot_id == Snapshot.id)
+        .where(
+            ConceptEntry.concept_id.in_(requested),
+            Snapshot.user_id == current_user.id,
+            Snapshot.status == SnapshotStatus.complete,
+        )
+        .order_by(Snapshot.date.asc())
+    )
+
+    out: dict[str, list[ConceptHistoryPoint]] = {}
+    for row in result.all():
+        key = str(row.concept_id)
+        out.setdefault(key, []).append(
+            ConceptHistoryPoint(
+                snapshot_id=row.snapshot_id,
+                date=row.date,
+                value=row.value,
+                currency_code=row.currency_code,
+            )
+        )
+    return out
+
+
 @router.get("/{concept_id}/history", response_model=list[ConceptHistoryPoint])
 async def get_concept_history(
     concept_id: uuid.UUID,

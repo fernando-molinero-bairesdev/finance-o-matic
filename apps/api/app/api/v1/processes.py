@@ -19,7 +19,8 @@ from app.schemas.process import (
     ProcessRead,
     ProcessUpdate,
 )
-from app.schemas.snapshot import ConceptEntryRead, SnapshotCreate, SnapshotDetail, SnapshotRead
+from app.models.snapshot_fx_rate import SnapshotFxRate
+from app.schemas.snapshot import ConceptEntryRead, SnapshotCreate, SnapshotDetail, SnapshotFxRateRead, SnapshotRead
 from app.services.process import (
     build_process_read_data,
     get_selected_concept_ids,
@@ -192,7 +193,12 @@ async def take_process_snapshot(
         select(ConceptEntry).where(ConceptEntry.snapshot_id == snapshot.id)
     )
     entries = list(entries_result.scalars().all())
+    fx_result = await session.execute(
+        select(SnapshotFxRate).where(SnapshotFxRate.snapshot_id == snapshot.id)
+    )
+    fx_rates = list(fx_result.scalars().all())
     return SnapshotDetail(
         **SnapshotRead.model_validate(snapshot).model_dump(),
         entries=[ConceptEntryRead.model_validate(e) for e in entries],
+        fx_rates=[SnapshotFxRateRead.model_validate(r) for r in fx_rates],
     )

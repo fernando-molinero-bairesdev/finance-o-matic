@@ -85,3 +85,12 @@ export interface ConceptHistoryPoint {
 export async function getConceptHistory(id: string): Promise<ConceptHistoryPoint[]> {
   return apiFetch<ConceptHistoryPoint[]>(`/api/v1/concepts/${id}/history`)
 }
+
+export async function getConceptHistoryBatch(
+  ids: string[],
+): Promise<Record<string, ConceptHistoryPoint[]>> {
+  if (ids.length === 0) return {}
+  return apiFetch<Record<string, ConceptHistoryPoint[]>>(
+    `/api/v1/concepts/history/batch?ids=${ids.join(',')}`,
+  )
+}

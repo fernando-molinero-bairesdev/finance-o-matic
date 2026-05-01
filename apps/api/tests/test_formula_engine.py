@@ -120,9 +120,9 @@ def test_formula_converts_cross_currency_reference() -> None:
     # EUR concept used inside a USD formula: value should be converted EUR→USD
     # rates: 1 USD = 0.9 EUR  →  1 EUR = 1/0.9 ≈ 1.111 USD
     uid = uuid.uuid4()
-    rent_eur = _concept_currency(uid=uid, name="rent", kind=ConceptKind.value, currency_code="EUR", literal_value=900.0)
-    income_usd = _concept_currency(uid=uid, name="income", kind=ConceptKind.value, currency_code="USD", literal_value=2000.0)
-    net_usd = _concept_currency(uid=uid, name="net", kind=ConceptKind.formula, currency_code="USD", expression="income - rent")
+    rent_eur = _concept_currency(user_id=uid, name="rent", kind=ConceptKind.value, currency_code="EUR", literal_value=900.0)
+    income_usd = _concept_currency(user_id=uid, name="income", kind=ConceptKind.value, currency_code="USD", literal_value=2000.0)
+    net_usd = _concept_currency(user_id=uid, name="net", kind=ConceptKind.formula, currency_code="USD", expression="income - rent")
 
     fx = {"EUR": 0.9}  # 1 USD = 0.9 EUR
     result = evaluate_concept_by_id(net_usd.id, [rent_eur, income_usd, net_usd], fx_rates=fx, base_currency="USD")
@@ -132,9 +132,9 @@ def test_formula_converts_cross_currency_reference() -> None:
 
 def test_formula_no_conversion_when_same_currency() -> None:
     uid = uuid.uuid4()
-    a = _concept_currency(uid=uid, name="a", kind=ConceptKind.value, currency_code="USD", literal_value=100.0)
-    b = _concept_currency(uid=uid, name="b", kind=ConceptKind.value, currency_code="USD", literal_value=50.0)
-    f = _concept_currency(uid=uid, name="f", kind=ConceptKind.formula, currency_code="USD", expression="a + b")
+    a = _concept_currency(user_id=uid, name="a", kind=ConceptKind.value, currency_code="USD", literal_value=100.0)
+    b = _concept_currency(user_id=uid, name="b", kind=ConceptKind.value, currency_code="USD", literal_value=50.0)
+    f = _concept_currency(user_id=uid, name="f", kind=ConceptKind.formula, currency_code="USD", expression="a + b")
 
     result = evaluate_concept_by_id(f.id, [a, b, f], fx_rates={"EUR": 0.9}, base_currency="USD")
     assert result == pytest.approx(150.0)
@@ -143,8 +143,8 @@ def test_formula_no_conversion_when_same_currency() -> None:
 def test_formula_no_conversion_without_fx_rates() -> None:
     # When fx_rates is empty/absent, cross-currency references pass through unchanged
     uid = uuid.uuid4()
-    a = _concept_currency(uid=uid, name="a", kind=ConceptKind.value, currency_code="EUR", literal_value=500.0)
-    f = _concept_currency(uid=uid, name="f", kind=ConceptKind.formula, currency_code="USD", expression="a * 2")
+    a = _concept_currency(user_id=uid, name="a", kind=ConceptKind.value, currency_code="EUR", literal_value=500.0)
+    f = _concept_currency(user_id=uid, name="f", kind=ConceptKind.formula, currency_code="USD", expression="a * 2")
 
     result = evaluate_concept_by_id(f.id, [a, f])
     assert result == pytest.approx(1000.0)
