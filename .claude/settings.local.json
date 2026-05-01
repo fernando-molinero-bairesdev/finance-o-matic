@@ -47,7 +47,8 @@
       "Bash(pnpm --filter @finance-o-matic/web typecheck)",
       "Bash(pnpm --filter @finance-o-matic/web exec vitest run)",
       "Bash(grep -E \"\\\\.\\(py|tsx\\)$\")",
-      "Bash(python -m pytest tests/test_formula_engine.py -x -q)"
+      "Bash(python -m pytest tests/test_formula_engine.py -x -q)",
+      "Bash(git add *)"
     ]
   }
 }
