@@ -48,7 +48,16 @@
       "Bash(pnpm --filter @finance-o-matic/web exec vitest run)",
       "Bash(grep -E \"\\\\.\\(py|tsx\\)$\")",
       "Bash(python -m pytest tests/test_formula_engine.py -x -q)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git -C /c/Users/ferch/repos/finance-o-matic add apps/api/alembic/env.py \"apps/api/alembic/versions/0010_snapshot_fx_rates.py\" apps/api/app/api/v1/formulas.py apps/api/app/api/v1/snapshots.py apps/api/app/models/snapshot_fx_rate.py apps/api/app/schemas/snapshot.py apps/api/app/services/snapshot.py apps/api/tests/test_formula_preview.py apps/api/tests/test_snapshot_fx_rates.py apps/web/src/features/snapshots/SnapshotList.tsx apps/web/src/lib/snapshotsApi.ts)",
+      "Bash(git -C /c/Users/ferch/repos/finance-o-matic status)",
+      "Bash(git commit -m ' *)",
+      "Bash(pnpm --filter @finance-o-matic/api test -- tests/test_concept_history_batch.py -v)",
+      "Bash(pnpm --filter @finance-o-matic/web exec vitest run src/features/charts/MultiConceptChart.test.tsx)",
+      "Bash(pnpm --filter @finance-o-matic/web exec vitest run src/pages/ReportsPage.test.tsx)",
+      "Bash(pnpm --filter @finance-o-matic/api test -- tests/test_formula_engine.py::test_formula_converts_cross_currency_reference tests/test_process_snapshots.py::test_process_snapshot_returns_201 -v)",
+      "Bash(pnpm --filter @finance-o-matic/api test -- tests/test_formula_engine.py::test_formula_converts_cross_currency_reference -v)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }
