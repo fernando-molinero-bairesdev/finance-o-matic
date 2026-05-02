@@ -15,6 +15,7 @@ import ReportsPage      from './pages/ReportsPage'
 import FormulaPlayground from './pages/FormulaPlayground'
 import ExportPage from './pages/ExportPage'
 import DataEntryPage from './pages/DataEntryPage'
+import HowItWorksPage from './pages/HowItWorksPage'
 
 export default function AppRouter() {
   return (
@@ -45,6 +46,9 @@ export default function AppRouter() {
 
               {/* Tools */}
               <Route path="/formula-playground" element={<FormulaPlayground />} />
+
+              {/* Guide */}
+              <Route path="/how-it-works" element={<HowItWorksPage />} />
             </Route>
           </Route>
 
