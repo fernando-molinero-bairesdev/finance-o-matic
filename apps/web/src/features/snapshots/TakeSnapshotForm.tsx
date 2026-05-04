@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createSnapshot } from '../../lib/snapshotsApi'
-import Button from '../../components/ui/Button'
 import FormField, { inputClass } from '../../components/ui/FormField'
+import ErrorAlert from '../../components/ui/ErrorAlert'
+import FormActions from '../../components/ui/FormActions'
 
 interface Props {
   onSuccess: (snapshotId: string) => void
@@ -51,17 +52,13 @@ export default function TakeSnapshotForm({ onSuccess, onCancel }: Props) {
           className={inputClass}
         />
       </FormField>
-      {mutation.isError && (
-        <p className="text-sm text-red-500">Error creating snapshot.</p>
-      )}
-      <div className="flex gap-2 pt-1">
-        <Button type="submit" variant="primary" size="sm" disabled={mutation.isPending}>
-          {mutation.isPending ? 'Creating…' : 'Open Snapshot'}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
+      <ErrorAlert message={mutation.isError ? 'Error creating snapshot.' : null} />
+      <FormActions
+        label="Open Snapshot"
+        pendingLabel="Creating…"
+        isPending={mutation.isPending}
+        onCancel={onCancel}
+      />
     </form>
   )
 }

@@ -13,6 +13,7 @@ import { getEntities } from '../../lib/entitiesApi'
 import type { EntityRead } from '../../lib/entitiesApi'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
+import AsyncStateGuard from '../../components/ui/AsyncStateGuard'
 import { inputClass } from '../../components/ui/FormField'
 
 function statusVariant(s: SnapshotStatus) {
@@ -285,18 +286,22 @@ export default function SnapshotList() {
     },
   })
 
-  if (isLoading) return <p className="text-sm text-[var(--text)]">Loading snapshots...</p>
-  if (isError) return <p className="text-sm text-red-500">Error loading snapshots.</p>
-  if (!data?.length) return (
-    <div className="text-center py-6 space-y-1">
-      <p className="text-sm text-[var(--text-h)] font-medium">No snapshots yet</p>
-      <p className="text-xs text-[var(--text)]">Take a snapshot to start tracking your net worth over time.</p>
-    </div>
-  )
-
   return (
+    <AsyncStateGuard
+      isLoading={isLoading}
+      isError={isError}
+      isEmpty={!data?.length}
+      loadingText="Loading snapshots..."
+      errorText="Error loading snapshots."
+      emptyContent={
+        <div className="space-y-1">
+          <p className="text-sm text-[var(--text-h)] font-medium">No snapshots yet</p>
+          <p className="text-xs text-[var(--text)]">Take a snapshot to start tracking your net worth over time.</p>
+        </div>
+      }
+    >
     <ul className="-mx-4">
-      {data.map((s) => {
+      {data?.map((s) => {
         const isExpanded = expandedId === s.id
         const snapshotStatus = s.status as SnapshotStatus
         return (
@@ -351,5 +356,6 @@ export default function SnapshotList() {
         )
       })}
     </ul>
+    </AsyncStateGuard>
   )
 }

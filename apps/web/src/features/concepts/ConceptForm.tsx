@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { ApiError } from '../../lib/apiClient'
 import { createConcept, updateConcept, getCurrencies, getConcepts } from '../../lib/conceptsApi'
+import { getApiErrorMessage } from '../../lib/apiErrors'
 import type { ConceptCreate, ConceptUpdate, ConceptKind, ConceptRead } from '../../lib/conceptsApi'
 import { getEntityTypes } from '../../lib/entitiesApi'
-import Button from '../../components/ui/Button'
 import FormField, { inputClass, selectClass } from '../../components/ui/FormField'
+import ErrorAlert from '../../components/ui/ErrorAlert'
+import FormActions from '../../components/ui/FormActions'
 import FormulaEditor from '../formulas/FormulaEditor'
 
 interface Props {
@@ -57,11 +58,7 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
       onSuccess()
     },
     onError: (err) => {
-      setError(
-        err instanceof ApiError && err.status === 409
-          ? 'A concept with that name already exists.'
-          : 'An error occurred. Please try again.',
-      )
+      setError(getApiErrorMessage(err, 'A concept with that name already exists.'))
     },
   })
 
@@ -91,11 +88,7 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      {error && (
-        <p role="alert" className="text-sm text-red-500 bg-red-50 dark:bg-red-950/30 rounded-lg px-3 py-2">
-          {error}
-        </p>
-      )}
+      <ErrorAlert message={error} />
 
       <FormField id="concept-name" label="Name">
         <input
@@ -200,16 +193,12 @@ export default function ConceptForm({ concept, onSuccess, onCancel }: Props) {
         </div>
       )}
 
-      <div className="flex gap-2 pt-1">
-        <Button type="submit" variant="primary" size="sm" disabled={mutation.isPending}>
-          {mutation.isPending ? (isEditing ? 'Saving…' : 'Creating…') : (isEditing ? 'Save' : 'Create')}
-        </Button>
-        {onCancel && (
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
-          </Button>
-        )}
-      </div>
+      <FormActions
+        label={isEditing ? 'Save' : 'Create'}
+        pendingLabel={isEditing ? 'Saving…' : 'Creating…'}
+        isPending={mutation.isPending}
+        onCancel={onCancel}
+      />
     </form>
   )
 }

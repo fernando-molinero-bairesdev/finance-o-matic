@@ -8,7 +8,7 @@ import {
   initCurrencies,
 } from '../lib/currenciesApi'
 import type { CurrencyRead } from '../lib/currenciesApi'
-import { ApiError } from '../lib/apiClient'
+import { getApiErrorMessage } from '../lib/apiErrors'
 import Button from '../components/ui/Button'
 import FormField, { inputClass } from '../components/ui/FormField'
 
@@ -38,11 +38,7 @@ function CurrencyRow({ currency }: CurrencyRowProps) {
     mutationFn: () => deleteCurrency(currency.code),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['currencies'] }),
     onError: (err) => {
-      setError(
-        err instanceof ApiError && err.status === 409
-          ? 'In use by one or more concepts.'
-          : 'Failed to delete.',
-      )
+      setError(getApiErrorMessage(err, 'In use by one or more concepts.', 'Failed to delete.'))
     },
   })
 
@@ -111,11 +107,7 @@ function CreateCurrencyForm() {
       setError(null)
     },
     onError: (err) => {
-      setError(
-        err instanceof ApiError && err.status === 409
-          ? `Currency '${code.toUpperCase()}' already exists.`
-          : 'Failed to create.',
-      )
+      setError(getApiErrorMessage(err, `Currency '${code.toUpperCase()}' already exists.`, 'Failed to create.'))
     },
   })
 

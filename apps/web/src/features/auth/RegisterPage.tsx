@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from './useAuth'
 import Button from '../../components/ui/Button'
 import FormField, { inputClass } from '../../components/ui/FormField'
+import ErrorAlert from '../../components/ui/ErrorAlert'
 
 export default function RegisterPage() {
   const { register } = useAuth()
@@ -58,11 +59,7 @@ export default function RegisterPage() {
                 className={inputClass}
               />
             </FormField>
-            {error && (
-              <p role="alert" className="text-sm text-red-500 bg-red-50 dark:bg-red-950/30 rounded-lg px-3 py-2">
-                {error}
-              </p>
-            )}
+            <ErrorAlert message={error} />
             <Button type="submit" variant="primary" disabled={isSubmitting} className="w-full">
               {isSubmitting ? 'Creating account…' : 'Create account'}
             </Button>

@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createProcess, updateProcess } from '../../lib/processesApi'
 import { getConcepts } from '../../lib/conceptsApi'
 import type { ProcessCadence, ProcessConceptScope, ProcessRead } from '../../lib/processesApi'
-import Button from '../../components/ui/Button'
 import FormField, { inputClass, selectClass } from '../../components/ui/FormField'
+import ErrorAlert from '../../components/ui/ErrorAlert'
+import FormActions from '../../components/ui/FormActions'
+import CheckboxGroup from '../../components/ui/CheckboxGroup'
 
 interface Props {
   process?: ProcessRead
@@ -102,41 +104,22 @@ export default function ProcessForm({ process, onSuccess, onCancel }: Props) {
       </FormField>
 
       {scope === 'selected' && concepts && (
-        <fieldset className="border border-[var(--border)] rounded-lg p-3 space-y-2">
-          <legend className="text-xs font-medium text-[var(--text-h)] px-1">Select concepts</legend>
-          {concepts.map((c) => (
-            <label key={c.id} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                aria-label={c.name}
-                checked={selectedConceptIds.includes(c.id)}
-                onChange={() => toggleConcept(c.id)}
-                className="accent-[var(--accent)]"
-              />
-              <span className="text-sm text-[var(--text-h)]">{c.name}</span>
-            </label>
-          ))}
-        </fieldset>
+        <CheckboxGroup
+          legend="Select concepts"
+          items={concepts}
+          selectedIds={selectedConceptIds}
+          onToggle={toggleConcept}
+        />
       )}
 
-      {mutation.isError && (
-        <p role="alert" className="text-sm text-red-500 bg-red-50 dark:bg-red-950/30 rounded-lg px-3 py-2">
-          Failed to {isEditing ? 'update' : 'create'} process. Please try again.
-        </p>
-      )}
+      <ErrorAlert message={mutation.isError ? `Failed to ${isEditing ? 'update' : 'create'} process. Please try again.` : null} />
 
-      <div className="flex gap-2 pt-1">
-        <Button type="submit" variant="primary" size="sm" disabled={mutation.isPending}>
-          {mutation.isPending
-            ? isEditing ? 'Saving…' : 'Creating…'
-            : isEditing ? 'Save' : 'Create'}
-        </Button>
-        {onCancel && (
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
-            Cancel
-          </Button>
-        )}
-      </div>
+      <FormActions
+        label={isEditing ? 'Save' : 'Create'}
+        pendingLabel={isEditing ? 'Saving…' : 'Creating…'}
+        isPending={mutation.isPending}
+        onCancel={onCancel}
+      />
     </form>
   )
 }
