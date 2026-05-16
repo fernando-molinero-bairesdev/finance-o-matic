@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends
@@ -19,12 +20,16 @@ from app.services.formula import (
     evaluate_concept_by_id,
     extract_reference_names,
 )
+from app.services.formula.historical import resolve_hist_calls
+from app.services.snapshot import _load_entity_prop_vars
 
 router = APIRouter(prefix="/formulas", tags=["formulas"])
 
 
 class FormulaPreviewIn(BaseModel):
     expression: str
+    entity_id: uuid.UUID | None = None
+    as_of_date: date | None = None  # used for hist_* resolution; defaults to today
 
 
 class FormulaPreviewOut(BaseModel):
@@ -76,6 +81,13 @@ async def preview_formula(
         if row.quote_code not in fx_rates:
             fx_rates[row.quote_code] = row.rate
 
+    extra_vars: dict[str, float] | None = None
+    if body.entity_id is not None:
+        extra_vars = await _load_entity_prop_vars(session, body.entity_id)
+
+    as_of = body.as_of_date or date.today()
+    hist_resolved = await resolve_hist_calls(session, user.id, body.expression, as_of)
+
     preview_id = uuid.uuid4()
     fake_concept = SimpleNamespace(
         id=preview_id,
@@ -94,6 +106,8 @@ async def preview_formula(
             group_members,
             fx_rates=fx_rates,
             base_currency=settings.fx_base_currency,
+            extra_vars=extra_vars,
+            hist_resolved=hist_resolved or None,
         )
     except (FormulaSyntaxError, FormulaEvaluationError) as exc:
         return FormulaPreviewOut(value=None, dependencies=[], error=str(exc))

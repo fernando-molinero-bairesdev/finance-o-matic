@@ -97,13 +97,11 @@ function EntryRow({ entry, snapshotId, conceptName, entityName, locked }: EntryR
 interface SnapshotEntrySheetProps {
   snapshot: SnapshotDetail
   concepts: ConceptRead[]
-  entityNames: Record<string, string>
 }
 
 export default function SnapshotEntrySheet({
   snapshot,
   concepts,
-  entityNames,
 }: SnapshotEntrySheetProps) {
   const qc = useQueryClient()
   const locked = snapshot.status === 'complete'

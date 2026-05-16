@@ -18,11 +18,10 @@ function makeQC() {
 function renderSheet(
   snapshot: SnapshotDetail,
   concepts: ConceptRead[] = [],
-  entityNames: Record<string, string> = {},
 ) {
   return render(
     <QueryClientProvider client={makeQC()}>
-      <SnapshotEntrySheet snapshot={snapshot} concepts={concepts} entityNames={entityNames} />
+      <SnapshotEntrySheet snapshot={snapshot} concepts={concepts} />
     </QueryClientProvider>,
   )
 }

@@ -10,10 +10,13 @@ from app.models.concept import Concept, ConceptCarryBehaviour, ConceptKind
 from app.models.concept_entry import ConceptEntry
 from app.models.concept_group_membership import ConceptGroupMembership
 from app.models.entity import Entity
+from app.models.entity_property_def import EntityPropertyDef, EntityPropertyType
+from app.models.entity_property_value import EntityPropertyValue
 from app.models.fx_rate import FxRate
 from app.models.snapshot import Snapshot, SnapshotStatus, SnapshotTrigger
 from app.models.snapshot_fx_rate import SnapshotFxRate
 from app.services.formula import FormulaEvaluationError, evaluate_concept_by_id
+from app.services.formula.historical import resolve_hist_calls
 
 
 async def _get_prior_entry(
@@ -67,6 +70,23 @@ async def _load_snapshot_fx_rates(
     if not rows:
         return None
     return {row.quote_code: row.rate for row in rows}
+
+
+async def _load_entity_prop_vars(
+    session: AsyncSession,
+    entity_id: uuid.UUID,
+) -> dict[str, float]:
+    """Return decimal entity property values keyed as prop_{property_name}."""
+    result = await session.execute(
+        select(EntityPropertyDef.name, EntityPropertyValue.value_decimal)
+        .join(EntityPropertyValue, EntityPropertyValue.property_def_id == EntityPropertyDef.id)
+        .where(
+            EntityPropertyValue.entity_id == entity_id,
+            EntityPropertyDef.value_type == EntityPropertyType.decimal,
+            EntityPropertyValue.value_decimal.is_not(None),
+        )
+    )
+    return {f"prop_{row.name}": float(row.value_decimal) for row in result.all()}
 
 
 async def _save_snapshot_fx_rates(
@@ -273,6 +293,15 @@ async def process_snapshot(
 
     for entry in entries:
         if entry.carry_behaviour_used == ConceptCarryBehaviour.auto:
+            prop_vars: dict[str, float] | None = None
+            if entry.entity_id is not None:
+                prop_vars = await _load_entity_prop_vars(session, entry.entity_id)
+            concept = concept_map.get(entry.concept_id)
+            hist_vars: dict[str, float] = {}
+            if concept and concept.expression:
+                hist_vars = await resolve_hist_calls(
+                    session, user_id, concept.expression, snapshot.date
+                )
             try:
                 entry.value = evaluate_concept_by_id(
                     entry.concept_id,
@@ -280,10 +309,11 @@ async def process_snapshot(
                     group_members,
                     fx_rates=fx_rates,
                     base_currency=settings.fx_base_currency,
+                    extra_vars=prop_vars,
+                    hist_resolved=hist_vars or None,
                 )
             except FormulaEvaluationError:
                 entry.value = None
-            concept = concept_map.get(entry.concept_id)
             if concept:
                 entry.formula_snapshot = concept.expression
 

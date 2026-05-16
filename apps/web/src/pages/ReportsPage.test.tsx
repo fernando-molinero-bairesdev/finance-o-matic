@@ -82,7 +82,7 @@ describe('ReportsPage', () => {
     vi.clearAllMocks()
     mockGetConceptHistoryBatch.mockResolvedValue({})
     mockGetSnapshot.mockResolvedValue({
-      id: 'snap-1', user_id: 'u1', date: '2026-01-01', label: null,
+      id: 'snap-1', user_id: 'u1', process_id: null, date: '2026-01-01', label: null,
       trigger: 'manual', status: 'complete', entries: [], fx_rates: [],
     })
   })

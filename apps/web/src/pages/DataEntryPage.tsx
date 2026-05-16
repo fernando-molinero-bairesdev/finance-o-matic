@@ -36,7 +36,6 @@ export default function DataEntryPage() {
     select: (data): EntityRead[] => data,
   })
 
-  const entityNames = Object.fromEntries((entities as EntityRead[]).map((e) => [e.id, e.name]))
 
   return (
     <div className="space-y-4">
@@ -78,7 +77,6 @@ export default function DataEntryPage() {
           <SnapshotEntrySheet
             snapshot={snapshot}
             concepts={concepts}
-            entityNames={entityNames}
           />
           <EntityDataEditor
             snapshot={snapshot}

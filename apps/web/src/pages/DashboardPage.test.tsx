@@ -57,6 +57,7 @@ const baseProcess: ProcessRead = {
 const baseSnapshot: SnapshotRead = {
   id: 's1',
   user_id: 'u1',
+  process_id: null,
   date: '2026-04-01',
   label: null,
   trigger: 'manual',

@@ -1,7 +1,9 @@
 import ast
+import copy
 import re
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass
 from functools import lru_cache
 
 from app.models.concept import Concept, ConceptKind
@@ -44,12 +46,98 @@ def _fn_if(condition: bool, when_true: float, when_false: float) -> float:
     return when_true if condition else when_false
 
 
-_ALLOWED_FUNCTIONS = {
+def _fn_case(*args: float) -> float:
+    if len(args) < 3 or len(args) % 2 == 0:
+        raise FormulaEvaluationError(
+            "case() requires an odd number of arguments >= 3: case(cond1, val1, ..., default)"
+        )
+    default = args[-1]
+    pairs = args[:-1]
+    for i in range(0, len(pairs), 2):
+        if pairs[i]:
+            return float(pairs[i + 1])
+    return float(default)
+
+
+def _fn_bracket(*args: float) -> float:
+    # Expected: value, (lo, hi, out)..., default  → total = 2 + 3*n, n >= 1
+    if len(args) < 5 or (len(args) - 2) % 3 != 0:
+        raise FormulaEvaluationError(
+            "bracket() requires: value, one or more (lo, hi, out) triplets, default"
+        )
+    value = args[0]
+    default = args[-1]
+    for i in range(1, len(args) - 1, 3):
+        lo, hi, out = args[i], args[i + 1], args[i + 2]
+        if lo <= value < hi:
+            return float(out)
+    return float(default)
+
+
+def _fn_hist_placeholder(*args: object) -> float:
+    raise FormulaEvaluationError(
+        "Historical formula function was not pre-resolved before evaluation."
+    )
+
+
+_HIST_FUNCTIONS = frozenset({"hist_sum", "hist_min", "hist_max", "hist_count"})
+_HIST_UNITS = frozenset({"day", "week", "month", "year"})
+
+_ALLOWED_FUNCTIONS: dict[str, object] = {
     "sum": _fn_sum,
     "min": _fn_min,
     "max": _fn_max,
     "if_": _fn_if,
+    "case": _fn_case,
+    "bracket": _fn_bracket,
+    **{name: _fn_hist_placeholder for name in _HIST_FUNCTIONS},
 }
+
+
+# ── HistoricalCallSpec ────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class HistoricalCallSpec:
+    func_name: str
+    concept_name: str
+    period: int
+    unit: str
+    process_names: tuple[str, ...]
+
+
+def _hist_key(spec: HistoricalCallSpec) -> str:
+    proc = "_" + "_".join(spec.process_names) if spec.process_names else ""
+    return f"__hist_{spec.func_name}_{spec.concept_name}_{spec.period}_{spec.unit}{proc}__"
+
+
+def _build_hist_key_from_node(node: ast.Call) -> str:
+    func_name = node.func.id  # type: ignore[union-attr]
+    concept_name = node.args[0].value  # type: ignore[union-attr]
+    period = int(node.args[1].value)  # type: ignore[union-attr]
+    unit = node.args[2].value  # type: ignore[union-attr]
+    process_names = tuple(a.value for a in node.args[3:])  # type: ignore[union-attr]
+    return _hist_key(HistoricalCallSpec(func_name, concept_name, period, unit, process_names))
+
+
+def _validate_hist_call(node: ast.Call) -> None:
+    name = node.func.id  # type: ignore[union-attr]
+    if len(node.args) < 3:
+        raise FormulaSyntaxError(
+            f"{name}() requires at least 3 args: concept_name, period, unit"
+        )
+    if not isinstance(node.args[0], ast.Constant) or not isinstance(node.args[0].value, str):
+        raise FormulaSyntaxError(f"{name}() first arg (concept name) must be a string literal")
+    if not isinstance(node.args[1], ast.Constant) or not isinstance(node.args[1].value, (int, float)):
+        raise FormulaSyntaxError(f"{name}() second arg (period) must be a numeric literal")
+    if not isinstance(node.args[2], ast.Constant) or not isinstance(node.args[2].value, str):
+        raise FormulaSyntaxError(f"{name}() third arg (unit) must be a string literal")
+    if node.args[2].value not in _HIST_UNITS:
+        raise FormulaSyntaxError(
+            f"{name}() unit must be one of {sorted(_HIST_UNITS)}, got {node.args[2].value!r}"
+        )
+    for extra in node.args[3:]:
+        if not isinstance(extra, ast.Constant) or not isinstance(extra.value, str):
+            raise FormulaSyntaxError(f"{name}() process filter args must be string literals")
 
 _ALLOWED_BINARY_OPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Mod, ast.Pow, ast.FloorDiv)
 _ALLOWED_UNARY_OPS = (ast.UAdd, ast.USub, ast.Not)
@@ -113,6 +201,9 @@ class _FormulaValidator(ast.NodeVisitor):
             raise FormulaSyntaxError("Keyword arguments are not allowed")
         if node.func.id == "if_" and len(node.args) != 3:
             raise FormulaSyntaxError("if() requires exactly three arguments")
+        if node.func.id in _HIST_FUNCTIONS:
+            _validate_hist_call(node)
+            return
         for arg in node.args:
             self.visit(arg)
 
@@ -143,11 +234,15 @@ class _ReferenceExtractor(ast.NodeVisitor):
         self.references: set[str] = set()
 
     def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Name) and node.func.id in _HIST_FUNCTIONS:
+            return  # hist_* args are string/numeric literals, not concept references
         for arg in node.args:
             self.visit(arg)
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id in _ALLOWED_FUNCTIONS:
+            return
+        if node.id.startswith("prop_"):
             return
         self.references.add(node.id)
 
@@ -159,6 +254,40 @@ def extract_reference_names(expression: str) -> set[str]:
     return extractor.references
 
 
+class _HistSpecExtractor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.specs: list[HistoricalCallSpec] = []
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Name) and node.func.id in _HIST_FUNCTIONS:
+            func_name = node.func.id
+            concept_name: str = node.args[0].value  # type: ignore[union-attr]
+            period = int(node.args[1].value)  # type: ignore[union-attr]
+            unit: str = node.args[2].value  # type: ignore[union-attr]
+            process_names = tuple(a.value for a in node.args[3:])  # type: ignore[union-attr]
+            self.specs.append(HistoricalCallSpec(func_name, concept_name, period, unit, process_names))
+        else:
+            self.generic_visit(node)
+
+
+def extract_hist_specs(expression: str) -> list[HistoricalCallSpec]:
+    parsed = parse_formula(expression)
+    extractor = _HistSpecExtractor()
+    extractor.visit(parsed)
+    return extractor.specs
+
+
+class _HistCallSubstitutor(ast.NodeTransformer):
+    def __init__(self, resolved: dict[str, float]) -> None:
+        self._resolved = resolved
+
+    def visit_Call(self, node: ast.Call) -> ast.AST:
+        if isinstance(node.func, ast.Name) and node.func.id in _HIST_FUNCTIONS:
+            key = _build_hist_key_from_node(node)
+            return ast.Constant(value=self._resolved.get(key, 0.0))
+        return self.generic_visit(node)
+
+
 def _to_float(value: object) -> float:
     if isinstance(value, bool):
         raise FormulaEvaluationError("Formula result must be numeric, not boolean")
@@ -167,11 +296,23 @@ def _to_float(value: object) -> float:
     return float(value)
 
 
-def _evaluate_expression(expression: str, variables: dict[str, float]) -> float:
+def _evaluate_expression(
+    expression: str,
+    variables: dict[str, float],
+    extra_vars: dict[str, float] | None = None,
+    hist_resolved: dict[str, float] | None = None,
+) -> float:
     parsed = parse_formula(expression)
-    compiled = compile(parsed, "<formula>", "eval")
+    if hist_resolved:
+        tree = _HistCallSubstitutor(hist_resolved).visit(copy.deepcopy(parsed))
+        ast.fix_missing_locations(tree)
+    else:
+        tree = parsed
+    compiled = compile(tree, "<formula>", "eval")
     context: dict[str, object] = dict(_ALLOWED_FUNCTIONS)
     context.update(variables)
+    if extra_vars:
+        context.update(extra_vars)
     try:
         value = eval(compiled, {"__builtins__": {}}, context)  # noqa: S307
     except FormulaEvaluationError:
@@ -267,6 +408,8 @@ def evaluate_concept_by_id(
     group_members: dict[uuid.UUID, list] | None = None,
     fx_rates: dict[str, float] | None = None,
     base_currency: str = "USD",
+    extra_vars: dict[str, float] | None = None,
+    hist_resolved: dict[str, float] | None = None,
 ) -> float:
     """Evaluate a concept by id.
 
@@ -319,7 +462,9 @@ def evaluate_concept_by_id(
                         )
                     raw = evaluate_node(ref_concept.id)
                     variables[ref_name] = _to_currency(raw, ref_concept, concept)
-                result = _evaluate_expression(concept.expression, variables)
+                ev = extra_vars if node_id == concept_id else None
+                hr = hist_resolved if node_id == concept_id else None
+                result = _evaluate_expression(concept.expression, variables, extra_vars=ev, hist_resolved=hr)
             elif concept.kind == ConceptKind.group:
                 children = (group_members or {}).get(node_id, [])
                 if not children:
